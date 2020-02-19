@@ -1,4 +1,4 @@
-package main
+package core
 
 import (
 	"fmt"
@@ -52,15 +52,12 @@ type Request struct {
 type Rule struct {
 	raw         string
 	ruleText    string
-	rawOptions  []string
 	regexString string
 	options     map[string]bool
-	optionsKeys []string
 	isComment   bool
 	isHTMLRule  bool
 	isException bool
-	document    bool
-	domain      map[string]bool
+	domains     map[string]bool
 }
 
 // Interfaces
@@ -79,58 +76,59 @@ func (rule *Rule) Allow(url string) bool {
 //
 
 func ParseRule(ruleText string) (*Rule, error) {
-	rule := &Rule{}
+	rule := &Rule{
+		domains: map[string]bool{},
+		options: map[string]bool{},
+	}
 	rule.raw = ruleText
-	ruleText = strings.TrimSpace(ruleText)
-	rule.isComment = strings.Contains(ruleText, "!") || strings.Contains(ruleText, "[Adblock")
-	if rule.isComment {
-		rule.isHTMLRule = false
-		rule.isException = false
-	} else {
-		rule.isHTMLRule = strings.Contains(ruleText, "##") || strings.Contains(ruleText, "#@#")
-		rule.isException = strings.HasPrefix(ruleText, "@@")
+	rule.ruleText = strings.TrimSpace(ruleText)
+	rule.isComment = strings.Contains(rule.ruleText, "!") || strings.Contains(rule.ruleText, "[Adblock")
+
+	if !rule.isComment {
+		rule.isHTMLRule = strings.Contains(rule.ruleText, "##") || strings.Contains(rule.ruleText, "#@#")
+		rule.isException = strings.HasPrefix(rule.ruleText, "@@")
+
 		if rule.isException {
-			ruleText = ruleText[2:]
+			rule.ruleText = rule.ruleText[2:]
 		}
 	}
 
 	rule.options = make(map[string]bool)
-	if !rule.isComment && strings.Contains(ruleText, "$") {
+	if !rule.isComment && strings.Contains(rule.ruleText, "$") {
 		var option string
-		parts := strings.SplitN(ruleText, "$", 2)
+
+		parts := strings.SplitN(rule.ruleText, "$", 2)
 		length := len(parts)
+
 		if length > 0 {
-			ruleText = parts[0]
+			rule.ruleText = parts[0]
 		}
+
 		if length > 1 {
 			option = parts[1]
 		}
 
-		rule.rawOptions = strings.Split(option, ",")
-		for _, opt := range rule.rawOptions {
-			if strings.HasPrefix(opt, "domain=") {
-				rule.domain = parseDomainOption(opt)
+		options := strings.Split(option, ",")
+		for _, option := range options {
+			if strings.HasPrefix(option, "domain=") {
+				rule.domains = parseDomainOption(option)
 			} else {
-				rule.options[strings.TrimPrefix(opt, "~")] = !strings.HasPrefix(opt, "~")
+				rule.options[strings.TrimPrefix(option, "~")] = !strings.HasPrefix(option, "~")
 			}
 		}
 	} else {
-		rule.rawOptions = []string{}
-		rule.domain = make(map[string]bool)
+		rule.domains = make(map[string]bool)
 	}
 
-	rule.optionsKeys = rule.OptionsKeys()
-	rule.ruleText = ruleText
-
-	if rule.isComment || rule.isHTMLRule {
-		rule.regexString = ""
-	} else {
+	if !(rule.isComment || rule.isHTMLRule) {
 		var err error
-		rule.regexString, err = ruleToRegexp(ruleText)
+		rule.regexString, err = ruleToRegexp(rule.ruleText)
+
 		if err != nil {
 			return nil, err
 		}
 	}
+
 	return rule, nil
 }
 
@@ -140,22 +138,26 @@ func NewRuleSet(rules []*Rule) (RuleSet, error) {
 
 func (rule *Rule) OptionsKeys() []string {
 	opts := []string{}
-	for opt := range rule.options {
-		opts = append(opts, opt)
+	for option := range rule.options {
+		opts = append(opts, option)
 	}
-	if rule.domain != nil && len(rule.domain) >= 0 {
+
+	if rule.domains != nil && len(rule.domains) > 0 {
 		opts = append(opts, "domain")
 	}
+
 	return opts
 }
 
 func parseDomainOption(text string) map[string]bool {
 	domains := text[len("domain="):]
-	parts := strings.Split(strings.Replace(domains, ",", "|", -1), "|")
+	parts := strings.Split(domains, "|")
 	opts := make(map[string]bool, len(parts))
+
 	for _, part := range parts {
 		opts[strings.TrimPrefix(part, "~")] = !strings.HasPrefix(part, "~")
 	}
+
 	return opts
 }
 
@@ -172,9 +174,7 @@ func ruleToRegexp(text string) (string, error) {
 	}
 
 	// escape special regex characters
-	rule := escapeSpecialRegxp.ReplaceAllStringFunc(text, func(src string) string {
-		return fmt.Sprintf(`\%v`, src)
-	})
+	rule := escapeSpecialRegxp.ReplaceAllStringFunc(text, regexp.QuoteMeta)
 
 	// XXX: the resulting regex must use non-capturing groups (?:
 	// for performance reasons; also, there is a limit on number
