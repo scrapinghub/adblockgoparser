@@ -10,24 +10,24 @@ import (
 func TestCommentRule(t *testing.T) {
 	ruleText := "! Title: EasyList"
 	rule, err := ParseRule(ruleText)
-	assert.Equal(t, err, errors.New("Commented rules are skipped"))
+	assert.Equal(t, errors.Is(err, ErrSkipComment), true)
 	assert.Nil(t, rule)
 
 	ruleText = "[Adblock Plus 2.0]"
 	rule, err = ParseRule(ruleText)
-	assert.Equal(t, err, errors.New("Commented rules are skipped"))
+	assert.Equal(t, errors.Is(err, ErrSkipComment), true)
 	assert.Nil(t, rule)
 }
 
 func TestHTMLRule(t *testing.T) {
 	ruleText := "###AdSense1"
 	rule, err := ParseRule(ruleText)
-	assert.Equal(t, err, errors.New("HTML rules are skipped"))
+	assert.Equal(t, errors.Is(err, ErrSkipHTML), true)
 	assert.Nil(t, rule)
 
 	ruleText = "statejournal.com#@##WNAd41"
 	rule, err = ParseRule(ruleText)
-	assert.Equal(t, err, errors.New("HTML rules are skipped"))
+	assert.Equal(t, errors.Is(err, ErrSkipHTML), true)
 	assert.Nil(t, rule)
 }
 
