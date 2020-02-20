@@ -1,6 +1,7 @@
 package adblockgoparser
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 	"regexp"
@@ -8,7 +9,9 @@ import (
 )
 
 var (
-	binaryOptions = []string{
+	ErrSkipComment = errors.New("Commented rules are skipped")
+	ErrSkipHTML    = errors.New("HTML rules are skipped")
+	binaryOptions  = []string{
 		"document",
 		"domain",
 		"elemhide",
@@ -54,8 +57,6 @@ type Rule struct {
 	ruleText    string
 	regexString string
 	options     map[string]bool
-	isComment   bool
-	isHTMLRule  bool
 	isException bool
 	domains     map[string]bool
 }
@@ -82,19 +83,24 @@ func ParseRule(ruleText string) (*Rule, error) {
 	}
 	rule.raw = ruleText
 	rule.ruleText = strings.TrimSpace(ruleText)
-	rule.isComment = strings.Contains(rule.ruleText, "!") || strings.Contains(rule.ruleText, "[Adblock")
 
-	if !rule.isComment {
-		rule.isHTMLRule = strings.Contains(rule.ruleText, "##") || strings.Contains(rule.ruleText, "#@#")
-		rule.isException = strings.HasPrefix(rule.ruleText, "@@")
+	isComment := strings.Contains(rule.ruleText, "!") || strings.Contains(rule.ruleText, "[Adblock")
+	if isComment {
+		return nil, ErrSkipComment
+	}
 
-		if rule.isException {
-			rule.ruleText = rule.ruleText[2:]
-		}
+	isHTMLRule := strings.Contains(rule.ruleText, "##") || strings.Contains(rule.ruleText, "#@#")
+	if isHTMLRule {
+		return nil, ErrSkipHTML
+	}
+
+	rule.isException = strings.HasPrefix(rule.ruleText, "@@")
+	if rule.isException {
+		rule.ruleText = rule.ruleText[2:]
 	}
 
 	rule.options = make(map[string]bool)
-	if !rule.isComment && strings.Contains(rule.ruleText, "$") {
+	if strings.Contains(rule.ruleText, "$") {
 		var option string
 
 		parts := strings.SplitN(rule.ruleText, "$", 2)
@@ -120,14 +126,7 @@ func ParseRule(ruleText string) (*Rule, error) {
 		rule.domains = make(map[string]bool)
 	}
 
-	if !(rule.isComment || rule.isHTMLRule) {
-		var err error
-		rule.regexString, err = ruleToRegexp(rule.ruleText)
-
-		if err != nil {
-			return nil, err
-		}
-	}
+	rule.regexString = ruleToRegexp(rule.ruleText)
 
 	return rule, nil
 }
@@ -161,16 +160,16 @@ func parseDomainOption(text string) map[string]bool {
 	return opts
 }
 
-func ruleToRegexp(text string) (string, error) {
+func ruleToRegexp(text string) string {
 	// Convert AdBlock rule to a regular expression.
 	if text == "" {
-		return ".*", nil
+		return ".*"
 	}
 
 	// Check if the rule isn't already regexp
 	length := len(text)
 	if length >= 2 && text[:1] == "/" && text[length-1:] == "/" {
-		return text[1 : length-1], nil
+		return text[1 : length-1]
 	}
 
 	// escape special regex characters
@@ -214,5 +213,5 @@ func ruleToRegexp(text string) (string, error) {
 	// we have "|$" in our regexp - do not touch it
 	rule = regexp.MustCompile(`(\|)[^$]`).ReplaceAllString(rule, `\|`)
 
-	return rule, nil
+	return rule
 }

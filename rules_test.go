@@ -1,6 +1,7 @@
 package adblockgoparser
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -9,37 +10,25 @@ import (
 func TestCommentRule(t *testing.T) {
 	ruleText := "! Title: EasyList"
 	rule, err := ParseRule(ruleText)
-	assert.Nil(t, err)
-	assert.Equal(t, rule.isComment, true)
-	assert.Equal(t, rule.isHTMLRule, false)
-	assert.Equal(t, rule.isException, false)
-	assert.Equal(t, rule.ruleText, ruleText)
+	assert.Equal(t, err, errors.New("Commented rules are skipped"))
+	assert.Nil(t, rule)
 
 	ruleText = "[Adblock Plus 2.0]"
 	rule, err = ParseRule(ruleText)
-	assert.Nil(t, err)
-	assert.Equal(t, rule.isComment, true)
-	assert.Equal(t, rule.isHTMLRule, false)
-	assert.Equal(t, rule.isException, false)
-	assert.Equal(t, rule.ruleText, ruleText)
+	assert.Equal(t, err, errors.New("Commented rules are skipped"))
+	assert.Nil(t, rule)
 }
 
 func TestHTMLRule(t *testing.T) {
 	ruleText := "###AdSense1"
 	rule, err := ParseRule(ruleText)
-	assert.Nil(t, err)
-	assert.Equal(t, rule.isComment, false)
-	assert.Equal(t, rule.isHTMLRule, true)
-	assert.Equal(t, rule.isException, false)
-	assert.Equal(t, rule.ruleText, ruleText)
+	assert.Equal(t, err, errors.New("HTML rules are skipped"))
+	assert.Nil(t, rule)
 
 	ruleText = "statejournal.com#@##WNAd41"
 	rule, err = ParseRule(ruleText)
-	assert.Nil(t, err)
-	assert.Equal(t, rule.isComment, false)
-	assert.Equal(t, rule.isHTMLRule, true)
-	assert.Equal(t, rule.isException, false)
-	assert.Equal(t, rule.ruleText, ruleText)
+	assert.Equal(t, err, errors.New("HTML rules are skipped"))
+	assert.Nil(t, rule)
 }
 
 func TestExceptionRule(t *testing.T) {
@@ -47,8 +36,6 @@ func TestExceptionRule(t *testing.T) {
 	expected := "||akamaized.net^"
 	rule, err := ParseRule(ruleText)
 	assert.Nil(t, err)
-	assert.Equal(t, rule.isComment, false)
-	assert.Equal(t, rule.isHTMLRule, false)
 	assert.Equal(t, rule.isException, true)
 	assert.Equal(t, rule.ruleText, expected)
 }
