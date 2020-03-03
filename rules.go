@@ -33,10 +33,8 @@ var (
 		"websocket",
 		"xmlhttprequest",
 	}
-	// optionsSplitPat    = fmt.Sprintf(",(?=~?(?:%v))", strings.Join(binaryOptions, "|"))
-	optionsSplitPat    = fmt.Sprintf(",(~?(?:%v))", strings.Join(binaryOptions, "|"))
-	optionsSplitRe     = regexp.MustCompile(optionsSplitPat)
-	escapeSpecialRegxp = regexp.MustCompile(`([.$+?{}()\[\]\\])`)
+	optionsSplitPat = fmt.Sprintf(",(~?(?:%v))", strings.Join(binaryOptions, "|"))
+	optionsSplitRe  = regexp.MustCompile(optionsSplitPat)
 )
 
 // Structs
@@ -67,22 +65,17 @@ type RuleSet interface {
 	Allow(*Request) bool
 }
 
-// Allow methods
-
-func (rule *Rule) Allow(url string) bool {
-	// TODO
-	return false
+func (rule *Rule) Match(url string) bool {
+	return regexp.MustCompile(rule.regexString).MatchString(url)
 }
-
-//
 
 func ParseRule(ruleText string) (*Rule, error) {
 	rule := &Rule{
-		domains: map[string]bool{},
-		options: map[string]bool{},
+		domains:  map[string]bool{},
+		options:  map[string]bool{},
+		raw:      ruleText,
+		ruleText: strings.TrimSpace(ruleText),
 	}
-	rule.raw = ruleText
-	rule.ruleText = strings.TrimSpace(ruleText)
 
 	isComment := strings.Contains(rule.ruleText, "!") || strings.Contains(rule.ruleText, "[Adblock")
 	if isComment {
@@ -99,7 +92,6 @@ func ParseRule(ruleText string) (*Rule, error) {
 		rule.ruleText = rule.ruleText[2:]
 	}
 
-	rule.options = make(map[string]bool)
 	if strings.Contains(rule.ruleText, "$") {
 		var option string
 
@@ -122,8 +114,6 @@ func ParseRule(ruleText string) (*Rule, error) {
 				rule.options[strings.TrimPrefix(option, "~")] = !strings.HasPrefix(option, "~")
 			}
 		}
-	} else {
-		rule.domains = make(map[string]bool)
 	}
 
 	rule.regexString = ruleToRegexp(rule.ruleText)
@@ -173,7 +163,13 @@ func ruleToRegexp(text string) string {
 	}
 
 	// escape special regex characters
-	rule := escapeSpecialRegxp.ReplaceAllStringFunc(text, regexp.QuoteMeta)
+	rule := text
+	rule = regexp.QuoteMeta(rule)
+
+	// |, ^ and * should not be escaped
+	rule = strings.Replace(rule, `\|`, `|`, -1)
+	rule = strings.Replace(rule, `\^`, `^`, -1)
+	rule = strings.Replace(rule, `\*`, `*`, -1)
 
 	// XXX: the resulting regex must use non-capturing groups (?:
 	// for performance reasons; also, there is a limit on number
@@ -183,7 +179,7 @@ func ruleToRegexp(text string) string {
 	// Separator character ^ matches anything but a letter, a digit, or
 	// one of the following: _ - . %. The end of the address is also
 	// accepted as separator.
-	rule = strings.Replace(rule, "^", `(?:[^\\w\\d_\\\-.%]|$)`, -1)
+	rule = strings.Replace(rule, "^", `(?:[^\w\d_\\\-.%]|$)`, -1)
 
 	// * symbol
 	rule = strings.Replace(rule, "*", ".*", -1)
@@ -202,7 +198,7 @@ func ruleToRegexp(text string) string {
 		if len(rule) > 2 {
 			//       |            | complete part       |
 			//       |  scheme    | of the domain       |
-			rule = `^(?:[^:/?#]+:)?(?://(?:[^/?#]*\\.)?)?` + rule[2:]
+			rule = `^(?:[^:/?#]+:)?(?://(?:[^/?#]*\.)?)?` + rule[2:]
 		}
 	} else if rule[0] == '|' {
 		// | in the beginning means start of the address
@@ -212,6 +208,5 @@ func ruleToRegexp(text string) string {
 	// other | symbols should be escaped
 	// we have "|$" in our regexp - do not touch it
 	rule = regexp.MustCompile(`(\|)[^$]`).ReplaceAllString(rule, `\|`)
-
 	return rule
 }
