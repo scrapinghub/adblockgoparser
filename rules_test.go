@@ -1,7 +1,6 @@
 package adblockgoparser
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -10,24 +9,24 @@ import (
 func TestCommentRule(t *testing.T) {
 	ruleText := "! Title: EasyList"
 	rule, err := ParseRule(ruleText)
-	assert.Equal(t, errors.Is(err, ErrSkipComment), true)
+	assert.EqualError(t, err, "Commented rules are skipped")
 	assert.Nil(t, rule)
 
 	ruleText = "[Adblock Plus 2.0]"
 	rule, err = ParseRule(ruleText)
-	assert.Equal(t, errors.Is(err, ErrSkipComment), true)
+	assert.EqualError(t, err, "Commented rules are skipped")
 	assert.Nil(t, rule)
 }
 
 func TestHTMLRule(t *testing.T) {
 	ruleText := "###AdSense1"
 	rule, err := ParseRule(ruleText)
-	assert.Equal(t, errors.Is(err, ErrSkipHTML), true)
+	assert.EqualError(t, err, "HTML rules are skipped")
 	assert.Nil(t, rule)
 
 	ruleText = "statejournal.com#@##WNAd41"
 	rule, err = ParseRule(ruleText)
-	assert.Equal(t, errors.Is(err, ErrSkipHTML), true)
+	assert.EqualError(t, err, "HTML rules are skipped")
 	assert.Nil(t, rule)
 }
 
@@ -35,45 +34,46 @@ func TestExceptionRule(t *testing.T) {
 	ruleText := "@@||akamaized.net^$domain=kora-online.tv"
 	expected := "||akamaized.net^"
 	rule, err := ParseRule(ruleText)
-	assert.Nil(t, err)
-	assert.Equal(t, rule.isException, true)
+	assert.NoError(t, err)
+	assert.True(t, rule.isException)
 	assert.Equal(t, rule.ruleText, expected)
 }
 
 func TestRuleBlockingAddressPart(t *testing.T) {
 	ruleText := "/banner/*/img^"
 	rule, err := ParseRule(ruleText)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	// TODO: Change url to Request
-	assert.Equal(t, rule.Allow("http://example.com/banner/foo/img"), false)
-	assert.Equal(t, rule.Allow("http://example.com/banner/foo/bar/img?param"), false)
-	assert.Equal(t, rule.Allow("http://example.com/banner//img/foo"), false)
-	assert.Equal(t, rule.Allow("http://example.com/banner/img"), true)
-	assert.Equal(t, rule.Allow("http://example.com/banner/foo/imgraph"), true)
-	assert.Equal(t, rule.Allow("http://example.com/banner/foo/img.gif"), true)
+	assert.True(t, rule.Match("http://example.com/banner/foo/img"))
+	assert.True(t, rule.Match("http://example.com/banner/foo/bar/img?param"))
+	assert.True(t, rule.Match("http://example.com/banner//img/foo"))
+	assert.True(t, rule.Match("http://example.com/banner/foo/img:8000"))
+	assert.False(t, rule.Match("http://example.com/banner/img"))
+	assert.False(t, rule.Match("http://example.com/banner/foo/imgraph"))
+	assert.False(t, rule.Match("http://example.com/banner/foo/img.gif"))
 }
 
 func TestRuleBlockingDomainName(t *testing.T) {
 	ruleText := "||ads.example.com^"
 	rule, err := ParseRule(ruleText)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	// TODO: Change url to Request
-	assert.Equal(t, rule.Allow("http://ads.example.com/foo.gif"), false)
-	assert.Equal(t, rule.Allow("http://server1.ads.example.com/foo.gif"), false)
-	assert.Equal(t, rule.Allow("https://ads.example.com:8000/"), false)
-	assert.Equal(t, rule.Allow("http://ads.example.com.ua/foo.gif"), true)
-	assert.Equal(t, rule.Allow("http://example.com/redirect/http://ads.example.com/"), true)
+	assert.True(t, rule.Match("http://ads.example.com/foo.gif"))
+	assert.True(t, rule.Match("http://server1.ads.example.com/foo.gif"))
+	assert.True(t, rule.Match("https://ads.example.com:8000/"))
+	assert.False(t, rule.Match("http://ads.example.com.ua/foo.gif"))
+	assert.False(t, rule.Match("http://example.com/redirect/http://ads.example.com/"))
 }
 
 func TestRuleBlockingExactAddress(t *testing.T) {
 	ruleText := "|http://example.com/|"
 	rule, err := ParseRule(ruleText)
-	assert.Nil(t, err)
+	assert.NoError(t, err)
 
 	// TODO: Change url to Request
-	assert.Equal(t, rule.Allow("http://example.com/"), false)
-	assert.Equal(t, rule.Allow("http://example.com/foo.gif"), true)
-	assert.Equal(t, rule.Allow("http://example.info/redirect/http://example.com/"), true)
+	assert.True(t, rule.Match("http://example.com/"))
+	assert.False(t, rule.Match("http://example.com/foo.gif"))
+	assert.False(t, rule.Match("http://example.info/redirect/http://example.com/"))
 }
