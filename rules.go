@@ -54,13 +54,17 @@ type Rule struct {
 	raw         string
 	ruleText    string
 	regexString string
+	regex       *regexp.Regexp
 	options     map[string]bool
 	isException bool
 	domains     map[string]bool
 }
 
 func (rule *Rule) Match(url string) bool {
-	return regexp.MustCompile(rule.regexString).MatchString(url)
+	if rule.regex == nil {
+		rule.regex = regexp.MustCompile(rule.regexString)
+	}
+	return rule.regex.MatchString(url)
 }
 
 func ParseRule(ruleText string) (*Rule, error) {
