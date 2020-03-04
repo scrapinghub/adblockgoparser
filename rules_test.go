@@ -77,3 +77,33 @@ func TestRuleBlockingExactAddress(t *testing.T) {
 	assert.False(t, rule.Match("http://example.com/foo.gif"))
 	assert.False(t, rule.Match("http://example.info/redirect/http://example.com/"))
 }
+
+func TestNewRuleSetFromStr(t *testing.T) {
+	rules := []string{"/banner/*/img^", "||ads.example.com^", "|http://example.com/|"}
+	ruleSet, err := NewRuleSetFromStr(rules)
+
+	assert.NoError(t, err)
+
+	// TODO: Change url to Request
+	// First rule
+	assert.False(t, ruleSet.Allow("http://example.com/banner/foo/img"))
+	assert.False(t, ruleSet.Allow("http://example.com/banner/foo/bar/img?param"))
+	assert.False(t, ruleSet.Allow("http://example.com/banner//img/foo"))
+	assert.False(t, ruleSet.Allow("http://example.com/banner/foo/img:8000"))
+	assert.True(t, ruleSet.Allow("http://example.com/banner/img"))
+	assert.True(t, ruleSet.Allow("http://example.com/banner/foo/imgraph"))
+	assert.True(t, ruleSet.Allow("http://example.com/banner/foo/img.gif"))
+
+	// Second rule
+	assert.False(t, ruleSet.Allow("http://ads.example.com/foo.gif"))
+	assert.False(t, ruleSet.Allow("http://server1.ads.example.com/foo.gif"))
+	assert.False(t, ruleSet.Allow("https://ads.example.com:8000/"))
+	assert.True(t, ruleSet.Allow("http://ads.example.com.ua/foo.gif"))
+	assert.True(t, ruleSet.Allow("http://example.com/redirect/http://ads.example.com/"))
+
+	// Third rule
+	assert.False(t, ruleSet.Allow("http://example.com/"))
+	assert.True(t, ruleSet.Allow("http://example.com/foo.gif"))
+	assert.True(t, ruleSet.Allow("http://example.info/redirect/http://example.com/"))
+
+}

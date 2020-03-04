@@ -59,12 +59,6 @@ type Rule struct {
 	domains     map[string]bool
 }
 
-// Interfaces
-
-type RuleSet interface {
-	Allow(*Request) bool
-}
-
 func (rule *Rule) Match(url string) bool {
 	return regexp.MustCompile(rule.regexString).MatchString(url)
 }
@@ -121,8 +115,35 @@ func ParseRule(ruleText string) (*Rule, error) {
 	return rule, nil
 }
 
-func NewRuleSet(rules []*Rule) (RuleSet, error) {
-	return nil, nil
+type RuleSet struct {
+	rules []*Rule
+}
+
+func (rules *RuleSet) Allow(url string) bool {
+	for _, rule := range rules.rules {
+		if rule.Match(url) {
+			return false
+		}
+	}
+	return true
+}
+
+func NewRuleSet(rules []*Rule) (*RuleSet, error) {
+	r := &RuleSet{
+		rules: rules,
+	}
+	return r, nil
+}
+func NewRuleSetFromStr(rulesStr []string) (*RuleSet, error) {
+	r := &RuleSet{}
+	for _, ruleStr := range rulesStr {
+		rule, err := ParseRule(ruleStr)
+		if err != nil {
+			continue
+		}
+		r.rules = append(r.rules, rule)
+	}
+	return r, nil
 }
 
 func (rule *Rule) OptionsKeys() []string {
