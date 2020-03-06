@@ -1,6 +1,8 @@
 package adblockgoparser
 
 import (
+	"os"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -106,4 +108,59 @@ func TestNewRuleSetFromStr(t *testing.T) {
 	assert.True(t, ruleSet.Allow("http://example.com/foo.gif"))
 	assert.True(t, ruleSet.Allow("http://example.info/redirect/http://example.com/"))
 
+}
+
+func TestNewRuleSetFromLongStr(t *testing.T) {
+	rulesStr := make([]string, 67000)
+	for i := range rulesStr {
+		rulesStr[i] = "/page/" + strconv.Itoa(i) + "/banner/*/img^"
+	}
+	// Correct rule
+	rulesStr[66999] = "/banner/*/img^"
+
+	ruleSet, err := NewRuleSetFromStr(rulesStr)
+
+	assert.NoError(t, err)
+	assert.False(t, ruleSet.Allow("http://example.com/banner/foo/img"))
+	assert.False(t, ruleSet.Allow("http://example.com/banner/foo/bar/img?param"))
+	assert.False(t, ruleSet.Allow("http://example.com/banner//img/foo"))
+	assert.False(t, ruleSet.Allow("http://example.com/banner/foo/img:8000"))
+	assert.True(t, ruleSet.Allow("http://example.com/banner/img"))
+	assert.True(t, ruleSet.Allow("http://example.com/banner/foo/imgraph"))
+	assert.True(t, ruleSet.Allow("http://example.com/banner/foo/img.gif"))
+}
+
+func TestNewRuleSetFromFile(t *testing.T) {
+	path := "easylist.txt"
+	// Create file
+	f, err := os.Create(path)
+	defer os.Remove(path)
+	defer f.Close()
+	data := []byte("[Adblock comment\n!Other comment\nanyhtmlrule.com#@##AdImage\n/banner/*/img^\n||ads.example.com^\n|http://example.com/|")
+	f.Write(data)
+
+	// Load from file
+	ruleSet, err := NewRulesSetFromFile(path)
+	assert.NoError(t, err)
+
+	// First rule
+	assert.False(t, ruleSet.Allow("http://example.com/banner/foo/img"))
+	assert.False(t, ruleSet.Allow("http://example.com/banner/foo/bar/img?param"))
+	assert.False(t, ruleSet.Allow("http://example.com/banner//img/foo"))
+	assert.False(t, ruleSet.Allow("http://example.com/banner/foo/img:8000"))
+	assert.True(t, ruleSet.Allow("http://example.com/banner/img"))
+	assert.True(t, ruleSet.Allow("http://example.com/banner/foo/imgraph"))
+	assert.True(t, ruleSet.Allow("http://example.com/banner/foo/img.gif"))
+
+	// Second rule
+	assert.False(t, ruleSet.Allow("http://ads.example.com/foo.gif"))
+	assert.False(t, ruleSet.Allow("http://server1.ads.example.com/foo.gif"))
+	assert.False(t, ruleSet.Allow("https://ads.example.com:8000/"))
+	assert.True(t, ruleSet.Allow("http://ads.example.com.ua/foo.gif"))
+	assert.True(t, ruleSet.Allow("http://example.com/redirect/http://ads.example.com/"))
+
+	// Third rule
+	assert.False(t, ruleSet.Allow("http://example.com/"))
+	assert.True(t, ruleSet.Allow("http://example.com/foo.gif"))
+	assert.True(t, ruleSet.Allow("http://example.info/redirect/http://example.com/"))
 }

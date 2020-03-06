@@ -1,11 +1,17 @@
 package adblockgoparser
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
+	"io/ioutil"
+	"log"
 	"net/url"
+	"os"
 	"regexp"
 	"strings"
+
+	"github.com/google/logger"
 )
 
 var (
@@ -120,33 +126,84 @@ func ParseRule(ruleText string) (*Rule, error) {
 }
 
 type RuleSet struct {
-	rules []*Rule
+	rules       []*Rule
+	regexString string
+	regex       *regexp.Regexp
 }
 
-func (rules *RuleSet) Allow(url string) bool {
-	for _, rule := range rules.rules {
-		if rule.Match(url) {
-			return false
-		}
+func (ruleSet *RuleSet) Match(url string) bool {
+	if ruleSet.regex == nil {
+		ruleSet.regex = regexp.MustCompile(ruleSet.regexString)
 	}
-	return true
+	return ruleSet.regex.MatchString(url)
 }
 
-func NewRuleSet(rules []*Rule) (*RuleSet, error) {
+func (ruleSet *RuleSet) Allow(url string) bool {
+	return !ruleSet.Match(url)
+}
+
+func NewRuleSet(rules []*Rule) *RuleSet {
 	r := &RuleSet{
 		rules: rules,
 	}
-	return r, nil
+	return r
 }
-func NewRuleSetFromStr(rulesStr []string) (*RuleSet, error) {
-	r := &RuleSet{}
-	for _, ruleStr := range rulesStr {
-		rule, err := ParseRule(ruleStr)
-		if err != nil {
+
+func readLines(path string) ([]string, error) {
+	f, err := os.Open(path)
+
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	reader := bufio.NewReader(f)
+	lines := []string{}
+	for line := []byte{}; err == nil; line, _, err = reader.ReadLine() {
+		sl := strings.TrimSuffix(string(line), "\n\r")
+		if len(sl) == 0 {
 			continue
 		}
-		r.rules = append(r.rules, rule)
+		lines = append(lines, sl)
 	}
+
+	return lines, nil
+}
+
+func NewRulesSetFromFile(path string) (*RuleSet, error) {
+	logger.Init("NewRulesSetFromFile", true, true, ioutil.Discard)
+	logger.SetFlags(log.LstdFlags)
+
+	lines, err := readLines(path)
+	if err != nil {
+		return nil, err
+	}
+	return NewRuleSetFromStr(lines)
+}
+
+func NewRuleSetFromStr(rulesStr []string) (*RuleSet, error) {
+	r := &RuleSet{}
+	regexString := ``
+	for _, ruleStr := range rulesStr {
+		rule, err := ParseRule(ruleStr)
+
+		switch {
+		case err == nil:
+			r.rules = append(r.rules, rule)
+			if regexString == `` {
+				regexString = rule.regexString
+			} else {
+				regexString = regexString + `|` + rule.regexString
+			}
+		case errors.Is(err, ErrSkipComment), errors.Is(err, ErrSkipHTML):
+			logger.Info(err, ": ", ruleStr)
+		default:
+			logger.Info("cannot parse rule: %w", err)
+			return nil, fmt.Errorf("cannot parse rule: %w", err)
+		}
+
+	}
+	r.regexString = regexString
 	return r, nil
 }
 
