@@ -56,7 +56,7 @@ type Request struct {
 	IsXHR bool
 }
 
-type Rule struct {
+type ruleAdBlock struct {
 	raw         string
 	ruleText    string
 	regexString string
@@ -66,15 +66,15 @@ type Rule struct {
 	domains     map[string]bool
 }
 
-func (rule *Rule) Match(url string) bool {
+func (rule *ruleAdBlock) Match(url string) bool {
 	if rule.regex == nil {
 		rule.regex = regexp.MustCompile(rule.regexString)
 	}
 	return rule.regex.MatchString(url)
 }
 
-func ParseRule(ruleText string) (*Rule, error) {
-	rule := &Rule{
+func ParseRule(ruleText string) (*ruleAdBlock, error) {
+	rule := &ruleAdBlock{
 		domains:  map[string]bool{},
 		options:  map[string]bool{},
 		raw:      ruleText,
@@ -126,7 +126,7 @@ func ParseRule(ruleText string) (*Rule, error) {
 }
 
 type RuleSet struct {
-	rules       []*Rule
+	rules       []*ruleAdBlock
 	regexString string
 	regex       *regexp.Regexp
 }
@@ -142,7 +142,7 @@ func (ruleSet *RuleSet) Allow(url string) bool {
 	return !ruleSet.Match(url)
 }
 
-func NewRuleSet(rules []*Rule) *RuleSet {
+func NewRuleSet(rules []*ruleAdBlock) *RuleSet {
 	r := &RuleSet{
 		rules: rules,
 	}
@@ -198,7 +198,7 @@ func NewRuleSetFromStr(rulesStr []string) (*RuleSet, error) {
 		case errors.Is(err, ErrSkipComment), errors.Is(err, ErrSkipHTML):
 			logger.Info(err, ": ", ruleStr)
 		default:
-			logger.Info("cannot parse rule: %w", err)
+			logger.Info("cannot parse rule: ", err)
 			return nil, fmt.Errorf("cannot parse rule: %w", err)
 		}
 
@@ -207,7 +207,7 @@ func NewRuleSetFromStr(rulesStr []string) (*RuleSet, error) {
 	return r, nil
 }
 
-func (rule *Rule) OptionsKeys() []string {
+func (rule *ruleAdBlock) OptionsKeys() []string {
 	opts := []string{}
 	for option := range rule.options {
 		opts = append(opts, option)
