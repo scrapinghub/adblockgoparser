@@ -97,8 +97,6 @@ func ParseRule(ruleText string) (*ruleAdBlock, error) {
 	}
 
 	if strings.Contains(rule.ruleText, "$") {
-		var option string
-
 		parts := strings.SplitN(rule.ruleText, "$", 2)
 		length := len(parts)
 
@@ -107,15 +105,12 @@ func ParseRule(ruleText string) (*ruleAdBlock, error) {
 		}
 
 		if length > 1 {
-			option = parts[1]
-		}
-
-		options := strings.Split(option, ",")
-		for _, option := range options {
-			if strings.HasPrefix(option, "domain=") {
-				rule.domains = parseDomainOption(option)
-			} else {
-				rule.options[strings.TrimPrefix(option, "~")] = !strings.HasPrefix(option, "~")
+			for _, option := range strings.Split(parts[1], ",") {
+				if strings.HasPrefix(option, "domain=") {
+					rule.domains = parseDomainOption(option)
+				} else {
+					rule.options[strings.TrimPrefix(option, "~")] = !strings.HasPrefix(option, "~")
+				}
 			}
 		}
 	}
