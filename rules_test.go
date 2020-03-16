@@ -1,6 +1,7 @@
 package adblockgoparser
 
 import (
+	"net/url"
 	"os"
 	"strconv"
 	"testing"
@@ -32,6 +33,13 @@ func TestHTMLRule(t *testing.T) {
 	assert.Nil(t, rule)
 }
 
+func TestUnsupportedOptionRule(t *testing.T) {
+	ruleText := "||akamaized.net^$badoption"
+	rule, err := ParseRule(ruleText)
+	assert.EqualError(t, err, "Unsupported option rules are skipped")
+	assert.Nil(t, rule)
+}
+
 func TestExceptionRule(t *testing.T) {
 	ruleText := "@@||akamaized.net^$domain=kora-online.tv"
 	expected := "||akamaized.net^"
@@ -41,43 +49,15 @@ func TestExceptionRule(t *testing.T) {
 	assert.Equal(t, rule.ruleText, expected)
 }
 
-func TestRuleBlockingAddressPart(t *testing.T) {
-	ruleText := "/banner/*/img^"
-	rule, err := ParseRule(ruleText)
-	assert.NoError(t, err)
-
-	// TODO: Change url to Request
-	assert.True(t, rule.Match("http://example.com/banner/foo/img"))
-	assert.True(t, rule.Match("http://example.com/banner/foo/bar/img?param"))
-	assert.True(t, rule.Match("http://example.com/banner//img/foo"))
-	assert.True(t, rule.Match("http://example.com/banner/foo/img:8000"))
-	assert.False(t, rule.Match("http://example.com/banner/img"))
-	assert.False(t, rule.Match("http://example.com/banner/foo/imgraph"))
-	assert.False(t, rule.Match("http://example.com/banner/foo/img.gif"))
-}
-
-func TestRuleBlockingDomainName(t *testing.T) {
-	ruleText := "||ads.example.com^"
-	rule, err := ParseRule(ruleText)
-	assert.NoError(t, err)
-
-	// TODO: Change url to Request
-	assert.True(t, rule.Match("http://ads.example.com/foo.gif"))
-	assert.True(t, rule.Match("http://server1.ads.example.com/foo.gif"))
-	assert.True(t, rule.Match("https://ads.example.com:8000/"))
-	assert.False(t, rule.Match("http://ads.example.com.ua/foo.gif"))
-	assert.False(t, rule.Match("http://example.com/redirect/http://ads.example.com/"))
-}
-
-func TestRuleBlockingExactAddress(t *testing.T) {
-	ruleText := "|http://example.com/|"
-	rule, err := ParseRule(ruleText)
-	assert.NoError(t, err)
-
-	// TODO: Change url to Request
-	assert.True(t, rule.Match("http://example.com/"))
-	assert.False(t, rule.Match("http://example.com/foo.gif"))
-	assert.False(t, rule.Match("http://example.info/redirect/http://example.com/"))
+func reqFromURL(rawURL string) Request {
+	reqUrl, _ := url.ParseRequestURI(rawURL)
+	req := Request{
+		URL:     reqUrl,
+		Origin:  "",
+		Referer: "",
+		IsXHR:   false,
+	}
+	return req
 }
 
 func TestNewRuleSetFromStr(t *testing.T) {
@@ -86,27 +66,26 @@ func TestNewRuleSetFromStr(t *testing.T) {
 
 	assert.NoError(t, err)
 
-	// TODO: Change url to Request
 	// First rule
-	assert.False(t, ruleSet.Allow("http://example.com/banner/foo/img"))
-	assert.False(t, ruleSet.Allow("http://example.com/banner/foo/bar/img?param"))
-	assert.False(t, ruleSet.Allow("http://example.com/banner//img/foo"))
-	assert.False(t, ruleSet.Allow("http://example.com/banner/foo/img:8000"))
-	assert.True(t, ruleSet.Allow("http://example.com/banner/img"))
-	assert.True(t, ruleSet.Allow("http://example.com/banner/foo/imgraph"))
-	assert.True(t, ruleSet.Allow("http://example.com/banner/foo/img.gif"))
+	assert.False(t, ruleSet.Allow(reqFromURL("http://example.com/banner/foo/img")))
+	assert.False(t, ruleSet.Allow(reqFromURL("http://example.com/banner/foo/bar/img?param")))
+	assert.False(t, ruleSet.Allow(reqFromURL("http://example.com/banner//img/foo")))
+	assert.False(t, ruleSet.Allow(reqFromURL("http://example.com/banner/foo/img:8000")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/banner/img")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/banner/foo/imgraph")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/banner/foo/img.gif")))
 
 	// Second rule
-	assert.False(t, ruleSet.Allow("http://ads.example.com/foo.gif"))
-	assert.False(t, ruleSet.Allow("http://server1.ads.example.com/foo.gif"))
-	assert.False(t, ruleSet.Allow("https://ads.example.com:8000/"))
-	assert.True(t, ruleSet.Allow("http://ads.example.com.ua/foo.gif"))
-	assert.True(t, ruleSet.Allow("http://example.com/redirect/http://ads.example.com/"))
+	assert.False(t, ruleSet.Allow(reqFromURL("http://ads.example.com/foo.gif")))
+	assert.False(t, ruleSet.Allow(reqFromURL("http://server1.ads.example.com/foo.gif")))
+	assert.False(t, ruleSet.Allow(reqFromURL("https://ads.example.com:8000/")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://ads.example.com.ua/foo.gif")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/redirect/http://ads.example.com/")))
 
 	// Third rule
-	assert.False(t, ruleSet.Allow("http://example.com/"))
-	assert.True(t, ruleSet.Allow("http://example.com/foo.gif"))
-	assert.True(t, ruleSet.Allow("http://example.info/redirect/http://example.com/"))
+	assert.False(t, ruleSet.Allow(reqFromURL("http://example.com/")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/foo.gif")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://example.info/redirect/http://example.com/")))
 
 }
 
@@ -121,13 +100,13 @@ func TestNewRuleSetFromLongStr(t *testing.T) {
 	ruleSet, err := NewRuleSetFromStr(rulesStr)
 
 	assert.NoError(t, err)
-	assert.False(t, ruleSet.Allow("http://example.com/banner/foo/img"))
-	assert.False(t, ruleSet.Allow("http://example.com/banner/foo/bar/img?param"))
-	assert.False(t, ruleSet.Allow("http://example.com/banner//img/foo"))
-	assert.False(t, ruleSet.Allow("http://example.com/banner/foo/img:8000"))
-	assert.True(t, ruleSet.Allow("http://example.com/banner/img"))
-	assert.True(t, ruleSet.Allow("http://example.com/banner/foo/imgraph"))
-	assert.True(t, ruleSet.Allow("http://example.com/banner/foo/img.gif"))
+	assert.False(t, ruleSet.Allow(reqFromURL("http://example.com/banner/foo/img")))
+	assert.False(t, ruleSet.Allow(reqFromURL("http://example.com/banner/foo/bar/img?param")))
+	assert.False(t, ruleSet.Allow(reqFromURL("http://example.com/banner//img/foo")))
+	assert.False(t, ruleSet.Allow(reqFromURL("http://example.com/banner/foo/img:8000")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/banner/img")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/banner/foo/imgraph")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/banner/foo/img.gif")))
 }
 
 func TestNewRuleSetFromFile(t *testing.T) {
@@ -136,7 +115,7 @@ func TestNewRuleSetFromFile(t *testing.T) {
 	f, err := os.Create(path)
 	defer os.Remove(path)
 	defer f.Close()
-	data := []byte("[Adblock comment\n!Other comment\nanyhtmlrule.com#@##AdImage\n/banner/*/img^\n||ads.example.com^\n|http://example.com/|")
+	data := []byte("[Adblock comment\n!Other comment\nanyhtmlrule.com#@##AdImage\n/banner/*/img^\n||ads.example.com^\n|http://example.com/|\n||akamaized.net^$badoption")
 	f.Write(data)
 
 	// Load from file
@@ -144,23 +123,60 @@ func TestNewRuleSetFromFile(t *testing.T) {
 	assert.NoError(t, err)
 
 	// First rule
-	assert.False(t, ruleSet.Allow("http://example.com/banner/foo/img"))
-	assert.False(t, ruleSet.Allow("http://example.com/banner/foo/bar/img?param"))
-	assert.False(t, ruleSet.Allow("http://example.com/banner//img/foo"))
-	assert.False(t, ruleSet.Allow("http://example.com/banner/foo/img:8000"))
-	assert.True(t, ruleSet.Allow("http://example.com/banner/img"))
-	assert.True(t, ruleSet.Allow("http://example.com/banner/foo/imgraph"))
-	assert.True(t, ruleSet.Allow("http://example.com/banner/foo/img.gif"))
+	assert.False(t, ruleSet.Allow(reqFromURL("http://example.com/banner/foo/img")))
+	assert.False(t, ruleSet.Allow(reqFromURL("http://example.com/banner/foo/bar/img?param")))
+	assert.False(t, ruleSet.Allow(reqFromURL("http://example.com/banner//img/foo")))
+	assert.False(t, ruleSet.Allow(reqFromURL("http://example.com/banner/foo/img:8000")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/banner/img")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/banner/foo/imgraph")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/banner/foo/img.gif")))
 
 	// Second rule
-	assert.False(t, ruleSet.Allow("http://ads.example.com/foo.gif"))
-	assert.False(t, ruleSet.Allow("http://server1.ads.example.com/foo.gif"))
-	assert.False(t, ruleSet.Allow("https://ads.example.com:8000/"))
-	assert.True(t, ruleSet.Allow("http://ads.example.com.ua/foo.gif"))
-	assert.True(t, ruleSet.Allow("http://example.com/redirect/http://ads.example.com/"))
+	assert.False(t, ruleSet.Allow(reqFromURL("http://ads.example.com/foo.gif")))
+	assert.False(t, ruleSet.Allow(reqFromURL("http://server1.ads.example.com/foo.gif")))
+	assert.False(t, ruleSet.Allow(reqFromURL("https://ads.example.com:8000/")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://ads.example.com.ua/foo.gif")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/redirect/http://ads.example.com/")))
 
 	// Third rule
-	assert.False(t, ruleSet.Allow("http://example.com/"))
-	assert.True(t, ruleSet.Allow("http://example.com/foo.gif"))
-	assert.True(t, ruleSet.Allow("http://example.info/redirect/http://example.com/"))
+	assert.False(t, ruleSet.Allow(reqFromURL("http://example.com/")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/foo.gif")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://example.info/redirect/http://example.com/")))
+}
+
+func TestRuleWithScriptOption(t *testing.T) {
+	rules := []string{"||ads.example.com^$script"}
+	ruleSet, err := NewRuleSetFromStr(rules)
+	assert.NoError(t, err)
+	assert.True(t, ruleSet.rulesOptionsString["script"] != ``)
+}
+
+func TestRuleWithImageOption(t *testing.T) {
+	rules := []string{"/banner/*/img^$image"}
+	ruleSet, err := NewRuleSetFromStr(rules)
+	assert.NoError(t, err)
+	assert.True(t, ruleSet.rulesOptionsString["image"] != ``)
+}
+
+func TestRuleSetWithStyleSheetOption(t *testing.T) {
+	rules := []string{"/banner/*/file^$stylesheet"}
+	ruleSet, err := NewRuleSetFromStr(rules)
+	assert.NoError(t, err)
+	assert.True(t, ruleSet.Match(reqFromURL("http://example.com/banner/foo/file.css")))
+}
+
+func TestExtractOptionsFromRequest(t *testing.T) {
+	reqUrl, _ := url.ParseRequestURI("http://example.com/banner/foo/file.js")
+	req := Request{
+		URL:     reqUrl,
+		Origin:  "",
+		Referer: "anything",
+		IsXHR:   false,
+	}
+	options := extractOptionsFromRequest(req)
+	assert.True(t, options["script"])
+	assert.True(t, options["thirdparty"])
+	assert.False(t, options["image"])
+	assert.False(t, options["stylesheet"])
+	assert.False(t, options["font"])
 }
