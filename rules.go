@@ -159,7 +159,9 @@ func (ruleSet *RuleSet) Match(req Request) bool {
 			if ruleSet.rulesOptionsRegex[option] == nil {
 				ruleSet.rulesOptionsRegex[option] = regexp.MustCompile(ruleSet.rulesOptionsString[option])
 			}
-			did_match = ruleSet.regexBasic.MatchString(req.URL.String())
+			if ruleSet.rulesOptionsString[option] != `` {
+				did_match = ruleSet.rulesOptionsRegex[option].MatchString(req.URL.String())
+			}
 			if did_match {
 				return true
 			}

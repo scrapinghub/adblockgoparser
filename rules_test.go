@@ -34,15 +34,15 @@ func TestHTMLRule(t *testing.T) {
 }
 
 func TestUnsupportedOptionRule(t *testing.T) {
-	ruleText := "||akamaized.net^$badoption"
+	ruleText := "||domain.net^$badoption"
 	rule, err := ParseRule(ruleText)
 	assert.EqualError(t, err, "Unsupported option rules are skipped")
 	assert.Nil(t, rule)
 }
 
 func TestExceptionRule(t *testing.T) {
-	ruleText := "@@||akamaized.net^$domain=kora-online.tv"
-	expected := "||akamaized.net^"
+	ruleText := "@@||domain.net^$domain=otherdomain.net"
+	expected := "||domain.net^"
 	rule, err := ParseRule(ruleText)
 	assert.NoError(t, err)
 	assert.True(t, rule.isException)
@@ -61,7 +61,7 @@ func reqFromURL(rawURL string) Request {
 }
 
 func TestNewRuleSetFromStr(t *testing.T) {
-	rules := []string{"/banner/*/img^", "||ads.example.com^", "|http://example.com/|"}
+	rules := []string{"/banner/*/img^", "||ads.example.com^", "|http://domain.com/|"}
 	ruleSet, err := NewRuleSetFromStr(rules)
 
 	assert.NoError(t, err)
@@ -83,9 +83,9 @@ func TestNewRuleSetFromStr(t *testing.T) {
 	assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/redirect/http://ads.example.com/")))
 
 	// Third rule
-	assert.False(t, ruleSet.Allow(reqFromURL("http://example.com/")))
-	assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/foo.gif")))
-	assert.True(t, ruleSet.Allow(reqFromURL("http://example.info/redirect/http://example.com/")))
+	assert.False(t, ruleSet.Allow(reqFromURL("http://domain.com/")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://domain.com/foo.gif")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://domain.info/redirect/http://domain.com/")))
 
 }
 
@@ -94,8 +94,8 @@ func TestNewRuleSetFromLongStr(t *testing.T) {
 	for i := range rulesStr {
 		rulesStr[i] = "/page/" + strconv.Itoa(i) + "/banner/*/img^"
 	}
-	// Correct rule
-	rulesStr[66999] = "/banner/*/img^"
+	// Make the last rule the correct one
+	rulesStr[len(rulesStr)-1] = "/banner/*/img^"
 
 	ruleSet, err := NewRuleSetFromStr(rulesStr)
 
@@ -115,7 +115,7 @@ func TestNewRuleSetFromFile(t *testing.T) {
 	f, err := os.Create(path)
 	defer os.Remove(path)
 	defer f.Close()
-	data := []byte("[Adblock comment\n!Other comment\nanyhtmlrule.com#@##AdImage\n/banner/*/img^\n||ads.example.com^\n|http://example.com/|\n||akamaized.net^$badoption")
+	data := []byte("[Adblock comment\n!Other comment\nanyhtmlrule.com#@##AdImage\n/banner/*/img^\n||ads.example.com^\n|http://example.com/|\n||domain.net^$badoption")
 	f.Write(data)
 
 	// Load from file
@@ -159,10 +159,10 @@ func TestRuleWithImageOption(t *testing.T) {
 }
 
 func TestRuleSetWithStyleSheetOption(t *testing.T) {
-	rules := []string{"/banner/*/file^$stylesheet"}
+	rules := []string{"||ads.example.com^$stylesheet"}
 	ruleSet, err := NewRuleSetFromStr(rules)
 	assert.NoError(t, err)
-	assert.True(t, ruleSet.Match(reqFromURL("http://example.com/banner/foo/file.css")))
+	assert.True(t, ruleSet.Match(reqFromURL("http://ads.example.com/banner/foo/file.css")))
 }
 
 func TestExtractOptionsFromRequest(t *testing.T) {
