@@ -10,43 +10,35 @@ import (
 )
 
 func TestCommentRule(t *testing.T) {
-	ruleText := "! Title: EasyList"
-	rule, err := ParseRule(ruleText)
-	assert.EqualError(t, err, "Commented rules are skipped")
-	assert.Nil(t, rule)
+	ruleText := "[Adblock Plus 2.0]"
+	rules := []string{ruleText}
+	_, err := NewRuleSetFromStr(rules)
+	assert.NoError(t, err)
 
-	ruleText = "[Adblock Plus 2.0]"
-	rule, err = ParseRule(ruleText)
-	assert.EqualError(t, err, "Commented rules are skipped")
-	assert.Nil(t, rule)
+	ruleText = "! Title: EasyList"
+	rules = []string{ruleText}
+	_, err = NewRuleSetFromStr(rules)
+	assert.NoError(t, err)
 }
 
 func TestHTMLRule(t *testing.T) {
 	ruleText := "###AdSense1"
-	rule, err := ParseRule(ruleText)
-	assert.EqualError(t, err, "HTML rules are skipped")
-	assert.Nil(t, rule)
+	rules := []string{ruleText}
+	_, err := NewRuleSetFromStr(rules)
+	assert.NoError(t, err)
 
 	ruleText = "statejournal.com#@##WNAd41"
-	rule, err = ParseRule(ruleText)
-	assert.EqualError(t, err, "HTML rules are skipped")
-	assert.Nil(t, rule)
-}
-
-func TestUnsupportedOptionRule(t *testing.T) {
-	ruleText := "||domain.net^$badoption"
-	rule, err := ParseRule(ruleText)
-	assert.EqualError(t, err, "Unsupported option rules are skipped")
-	assert.Nil(t, rule)
+	rules = []string{ruleText}
+	_, err = NewRuleSetFromStr(rules)
+	assert.NoError(t, err)
 }
 
 func TestExceptionRule(t *testing.T) {
 	ruleText := "@@||domain.net^$domain=otherdomain.net"
-	expected := "||domain.net^"
-	rule, err := ParseRule(ruleText)
+	rules := []string{ruleText}
+	ruleSet, err := NewRuleSetFromStr(rules)
 	assert.NoError(t, err)
-	assert.True(t, rule.isException)
-	assert.Equal(t, rule.ruleText, expected)
+	assert.NotEmpty(t, ruleSet.regexBasicWhitelist)
 }
 
 func reqFromURL(rawURL string) Request {
@@ -162,7 +154,7 @@ func TestRuleSetWithStyleSheetOption(t *testing.T) {
 	rules := []string{"||ads.example.com^$stylesheet"}
 	ruleSet, err := NewRuleSetFromStr(rules)
 	assert.NoError(t, err)
-	assert.True(t, ruleSet.Match(reqFromURL("http://ads.example.com/banner/foo/file.css")))
+	assert.False(t, ruleSet.Allow(reqFromURL("http://ads.example.com/banner/foo/file.css")))
 }
 
 func TestExtractOptionsFromRequest(t *testing.T) {

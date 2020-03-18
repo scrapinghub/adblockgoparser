@@ -52,7 +52,6 @@ var (
 		"thirdparty",
 	}
 	supportedOptionsPat = strings.Join(supportedOptions, ",")
-	loggerInitialized   = false
 )
 
 // Structs
@@ -78,12 +77,7 @@ type ruleAdBlock struct {
 	domains     map[string]bool
 }
 
-func ParseRule(ruleText string) (*ruleAdBlock, error) {
-	if !loggerInitialized {
-		loggerInitialized = true
-		logger.Init("ParseRule", true, true, ioutil.Discard)
-		logger.SetFlags(log.LstdFlags)
-	}
+func parseRule(ruleText string) (*ruleAdBlock, error) {
 	rule := &ruleAdBlock{
 		domains:  map[string]bool{},
 		options:  map[string]bool{},
@@ -135,17 +129,18 @@ func ParseRule(ruleText string) (*ruleAdBlock, error) {
 }
 
 type RuleSet struct {
-	regexBasicString   string
-	regexBasic         *regexp.Regexp
-	rulesOptionsString map[string]string
-	rulesOptionsRegex  map[string]*regexp.Regexp
+	regexBasicString            string
+	regexBasicWhitelistString   string
+	regexBasic                  *regexp.Regexp
+	regexBasicWhitelist         *regexp.Regexp
+	rulesOptionsString          map[string]string
+	rulesOptionsWhitelistString map[string]string
+	rulesOptionsRegex           map[string]*regexp.Regexp
+	rulesOptionsWhitelistRegex  map[string]*regexp.Regexp
 }
 
 func (ruleSet *RuleSet) Match(req Request) bool {
 	did_match := false
-	if ruleSet.regexBasic == nil {
-		ruleSet.regexBasic = regexp.MustCompile(ruleSet.regexBasicString)
-	}
 	if ruleSet.regexBasicString != `` {
 		did_match = ruleSet.regexBasic.MatchString(req.URL.String())
 	}
@@ -155,13 +150,8 @@ func (ruleSet *RuleSet) Match(req Request) bool {
 
 	options := extractOptionsFromRequest(req)
 	for option, active := range options {
-		if active {
-			if ruleSet.rulesOptionsRegex[option] == nil {
-				ruleSet.rulesOptionsRegex[option] = regexp.MustCompile(ruleSet.rulesOptionsString[option])
-			}
-			if ruleSet.rulesOptionsString[option] != `` {
-				did_match = ruleSet.rulesOptionsRegex[option].MatchString(req.URL.String())
-			}
+		if active && ruleSet.rulesOptionsString[option] != `` {
+			did_match = ruleSet.rulesOptionsRegex[option].MatchString(req.URL.String())
 			if did_match {
 				return true
 			}
@@ -196,10 +186,6 @@ func readLines(path string) ([]string, error) {
 }
 
 func NewRulesSetFromFile(path string) (*RuleSet, error) {
-	logger.Init("NewRulesSetFromFile", true, true, ioutil.Discard)
-	logger.SetFlags(log.LstdFlags)
-	loggerInitialized = true
-
 	lines, err := readLines(path)
 	if err != nil {
 		return nil, err
@@ -208,35 +194,53 @@ func NewRulesSetFromFile(path string) (*RuleSet, error) {
 }
 
 func NewRuleSetFromStr(rulesStr []string) (*RuleSet, error) {
+	logger.Init("NewRuleSetFromStr", true, true, ioutil.Discard)
+	logger.SetFlags(log.LstdFlags)
+
 	ruleSet := &RuleSet{
-		rulesOptionsString: make(map[string]string, len(supportedOptions)),
-		rulesOptionsRegex:  make(map[string]*regexp.Regexp, len(supportedOptions)),
-	}
-	// Init regex strings
-	regexBasicString := ``
-	for _, option := range supportedOptions {
-		ruleSet.rulesOptionsString[option] = ``
+		rulesOptionsString:          make(map[string]string, len(supportedOptions)),
+		rulesOptionsWhitelistString: make(map[string]string, len(supportedOptions)),
+		rulesOptionsRegex:           make(map[string]*regexp.Regexp, len(supportedOptions)),
+		rulesOptionsWhitelistRegex:  make(map[string]*regexp.Regexp, len(supportedOptions)),
 	}
 
 	// Start parsing
 	for _, ruleStr := range rulesStr {
-		rule, err := ParseRule(ruleStr)
+		rule, err := parseRule(ruleStr)
 
 		switch {
 		case err == nil:
 			if rule.options != nil && len(rule.options) > 0 {
-				for option := range rule.options {
-					if ruleSet.rulesOptionsString[option] == `` {
-						ruleSet.rulesOptionsString[option] = rule.regexString
-					} else {
-						ruleSet.rulesOptionsString[option] = ruleSet.rulesOptionsString[option] + `|` + rule.regexString
+				if rule.isException {
+					for option := range rule.options {
+						if ruleSet.rulesOptionsWhitelistString[option] == `` {
+							ruleSet.rulesOptionsWhitelistString[option] = rule.regexString
+						} else {
+							ruleSet.rulesOptionsWhitelistString[option] = ruleSet.rulesOptionsWhitelistString[option] + `|` + rule.regexString
+						}
+					}
+				} else {
+					for option := range rule.options {
+						if ruleSet.rulesOptionsString[option] == `` {
+							ruleSet.rulesOptionsString[option] = rule.regexString
+						} else {
+							ruleSet.rulesOptionsString[option] = ruleSet.rulesOptionsString[option] + `|` + rule.regexString
+						}
 					}
 				}
 			} else {
-				if regexBasicString == `` {
-					regexBasicString = rule.regexString
+				if rule.isException {
+					if ruleSet.regexBasicWhitelistString == `` {
+						ruleSet.regexBasicWhitelistString = rule.regexString
+					} else {
+						ruleSet.regexBasicWhitelistString = ruleSet.regexBasicWhitelistString + `|` + rule.regexString
+					}
 				} else {
-					regexBasicString = regexBasicString + `|` + rule.regexString
+					if ruleSet.regexBasicString == `` {
+						ruleSet.regexBasicString = rule.regexString
+					} else {
+						ruleSet.regexBasicString = ruleSet.regexBasicString + `|` + rule.regexString
+					}
 				}
 			}
 		case errors.Is(err, ErrSkipComment), errors.Is(err, ErrSkipHTML), errors.Is(err, ErrUnsupportedRule):
@@ -246,7 +250,13 @@ func NewRuleSetFromStr(rulesStr []string) (*RuleSet, error) {
 			return nil, fmt.Errorf("cannot parse rule: %w", err)
 		}
 	}
-	ruleSet.regexBasicString = regexBasicString
+
+	ruleSet.regexBasic = regexp.MustCompile(ruleSet.regexBasicString)
+	ruleSet.regexBasicWhitelist = regexp.MustCompile(ruleSet.regexBasicWhitelistString)
+	for option, _ := range ruleSet.rulesOptionsString {
+		ruleSet.rulesOptionsRegex[option] = regexp.MustCompile(ruleSet.rulesOptionsString[option])
+		ruleSet.rulesOptionsWhitelistRegex[option] = regexp.MustCompile(ruleSet.rulesOptionsWhitelistString[option])
+	}
 	return ruleSet, nil
 }
 
