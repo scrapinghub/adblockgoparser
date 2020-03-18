@@ -114,7 +114,7 @@ func parseRule(ruleText string) (*ruleAdBlock, error) {
 					rule.domains = parseDomainOption(option)
 				} else {
 					if ok := strings.Contains(supportedOptionsPat, option); !ok {
-						logger.Info(ErrUnsupportedRule, ": ", option)
+						logger.Info(ErrUnsupportedRule, ": ", strings.TrimSpace(option))
 						return nil, ErrUnsupportedRule
 					}
 					rule.options[strings.TrimPrefix(option, "~")] = !strings.HasPrefix(option, "~")
@@ -139,7 +139,28 @@ type RuleSet struct {
 	rulesOptionsWhitelistRegex  map[string]*regexp.Regexp
 }
 
-func (ruleSet *RuleSet) Match(req Request) bool {
+func matchWhite(ruleSet RuleSet, req Request) bool {
+	did_match := false
+	if ruleSet.regexBasicWhitelistString != `` {
+		did_match = ruleSet.regexBasicWhitelist.MatchString(req.URL.String())
+	}
+	if did_match {
+		return true
+	}
+
+	options := extractOptionsFromRequest(req)
+	for option, active := range options {
+		if active && ruleSet.rulesOptionsWhitelistString[option] != `` {
+			did_match = ruleSet.rulesOptionsWhitelistRegex[option].MatchString(req.URL.String())
+			if did_match {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func matchBlack(ruleSet RuleSet, req Request) bool {
 	did_match := false
 	if ruleSet.regexBasicString != `` {
 		did_match = ruleSet.regexBasic.MatchString(req.URL.String())
@@ -161,7 +182,13 @@ func (ruleSet *RuleSet) Match(req Request) bool {
 }
 
 func (ruleSet *RuleSet) Allow(req Request) bool {
-	return !ruleSet.Match(req)
+	if ok := matchWhite(*ruleSet, req); ok {
+		return true
+	}
+	if ok := matchBlack(*ruleSet, req); ok {
+		return false
+	}
+	return true
 }
 
 func readLines(path string) ([]string, error) {
@@ -210,6 +237,9 @@ func NewRuleSetFromStr(rulesStr []string) (*RuleSet, error) {
 
 		switch {
 		case err == nil:
+			if rule.regexString == ".*" {
+				continue
+			}
 			if rule.options != nil && len(rule.options) > 0 {
 				if rule.isException {
 					for option := range rule.options {
@@ -244,7 +274,7 @@ func NewRuleSetFromStr(rulesStr []string) (*RuleSet, error) {
 				}
 			}
 		case errors.Is(err, ErrSkipComment), errors.Is(err, ErrSkipHTML), errors.Is(err, ErrUnsupportedRule):
-			logger.Info(err, ": ", ruleStr)
+			logger.Info(err, ": ", strings.TrimSpace(ruleStr))
 		default:
 			logger.Info("cannot parse rule: ", err)
 			return nil, fmt.Errorf("cannot parse rule: %w", err)

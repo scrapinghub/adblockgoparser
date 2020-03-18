@@ -107,7 +107,14 @@ func TestNewRuleSetFromFile(t *testing.T) {
 	f, err := os.Create(path)
 	defer os.Remove(path)
 	defer f.Close()
-	data := []byte("[Adblock comment\n!Other comment\nanyhtmlrule.com#@##AdImage\n/banner/*/img^\n||ads.example.com^\n|http://example.com/|\n||domain.net^$badoption")
+	data := []byte(`
+		[Adblock comment
+		!Other comment
+		anyhtmlrule.com#@##AdImage
+		/banner/*/img^
+		||ads.example.com^
+		|http://example.com/|
+		||domain.net^$badoption`)
 	f.Write(data)
 
 	// Load from file
@@ -132,6 +139,46 @@ func TestNewRuleSetFromFile(t *testing.T) {
 
 	// Third rule
 	assert.False(t, ruleSet.Allow(reqFromURL("http://example.com/")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/foo.gif")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://example.info/redirect/http://example.com/")))
+
+	// Now add some exceptions
+	data = []byte(`
+		[Adblock comment
+		!Other comment
+		anyhtmlrule.com#@##AdImage
+		/banner/*/img^
+		||ads.example.com^
+		|http://example.com/|
+		||domain.net^$badoption
+		@@/banner/*/img^
+		@@||ads.example.com^
+		@@|http://example.com/|
+	`)
+	f.Write(data)
+
+	// Load from file
+	ruleSet, err = NewRulesSetFromFile(path)
+	assert.NoError(t, err)
+
+	// First rule
+	assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/banner/foo/img")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/banner/foo/bar/img?param")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/banner//img/foo")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/banner/foo/img:8000")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/banner/img")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/banner/foo/imgraph")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/banner/foo/img.gif")))
+
+	// Second rule
+	assert.True(t, ruleSet.Allow(reqFromURL("http://ads.example.com/foo.gif")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://server1.ads.example.com/foo.gif")))
+	assert.True(t, ruleSet.Allow(reqFromURL("https://ads.example.com:8000/")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://ads.example.com.ua/foo.gif")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/redirect/http://ads.example.com/")))
+
+	// Third rule
+	assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/")))
 	assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/foo.gif")))
 	assert.True(t, ruleSet.Allow(reqFromURL("http://example.info/redirect/http://example.com/")))
 }
