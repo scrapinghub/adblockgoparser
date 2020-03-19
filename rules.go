@@ -145,19 +145,19 @@ type RuleSet struct {
 }
 
 func matchWhite(ruleSet RuleSet, req Request) bool {
-	did_match := false
+	didMatch := false
 	if ruleSet.regexBasicWhitelistString != `` {
-		did_match = ruleSet.regexBasicWhitelist.MatchString(req.URL.String())
+		didMatch = ruleSet.regexBasicWhitelist.MatchString(req.URL.String())
 	}
-	if did_match {
+	if didMatch {
 		return true
 	}
 
 	options := extractOptionsFromRequest(req)
 	for option, active := range options {
 		if active && ruleSet.rulesOptionsWhitelistString[option] != `` {
-			did_match = ruleSet.rulesOptionsWhitelistRegex[option].MatchString(req.URL.String())
-			if did_match {
+			didMatch = ruleSet.rulesOptionsWhitelistRegex[option].MatchString(req.URL.String())
+			if didMatch {
 				return true
 			}
 		}
@@ -166,19 +166,19 @@ func matchWhite(ruleSet RuleSet, req Request) bool {
 }
 
 func matchBlack(ruleSet RuleSet, req Request) bool {
-	did_match := false
+	didMatch := false
 	if ruleSet.regexBasicString != `` {
-		did_match = ruleSet.regexBasic.MatchString(req.URL.String())
+		didMatch = ruleSet.regexBasic.MatchString(req.URL.String())
 	}
-	if did_match {
+	if didMatch {
 		return true
 	}
 
 	options := extractOptionsFromRequest(req)
 	for option, active := range options {
 		if active && ruleSet.rulesOptionsString[option] != `` {
-			did_match = ruleSet.rulesOptionsRegex[option].MatchString(req.URL.String())
-			if did_match {
+			didMatch = ruleSet.rulesOptionsRegex[option].MatchString(req.URL.String())
+			if didMatch {
 				return true
 			}
 		}
