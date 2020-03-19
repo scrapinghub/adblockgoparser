@@ -114,7 +114,8 @@ func TestNewRuleSetFromFile(t *testing.T) {
 		/banner/*/img^
 		||ads.example.com^
 		|http://example.com/|
-		||domain.net^$badoption`)
+		||domain.net^$badoption
+	`)
 	f.Write(data)
 
 	// Load from file

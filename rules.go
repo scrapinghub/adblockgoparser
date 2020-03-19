@@ -18,6 +18,7 @@ import (
 var (
 	ErrSkipComment     = errors.New("Commented rules are skipped")
 	ErrSkipHTML        = errors.New("HTML rules are skipped")
+	ErrEmptyLine       = errors.New("Empty lines are skipped")
 	ErrUnsupportedRule = errors.New("Unsupported option rules are skipped")
 	binaryOptions      = []string{
 		"document",
@@ -78,6 +79,9 @@ type ruleAdBlock struct {
 }
 
 func parseRule(ruleText string) (*ruleAdBlock, error) {
+	if strings.TrimSpace(ruleText) == "" {
+		return nil, ErrEmptyLine
+	}
 	rule := &ruleAdBlock{
 		domains:  map[string]bool{},
 		options:  map[string]bool{},
@@ -237,9 +241,6 @@ func NewRuleSetFromStr(rulesStr []string) (*RuleSet, error) {
 
 		switch {
 		case err == nil:
-			if rule.regexString == ".*" {
-				continue
-			}
 			if rule.options != nil && len(rule.options) > 0 {
 				if rule.isException {
 					for option := range rule.options {
@@ -273,7 +274,10 @@ func NewRuleSetFromStr(rulesStr []string) (*RuleSet, error) {
 					}
 				}
 			}
-		case errors.Is(err, ErrSkipComment), errors.Is(err, ErrSkipHTML), errors.Is(err, ErrUnsupportedRule):
+		case errors.Is(err, ErrSkipComment),
+			errors.Is(err, ErrSkipHTML),
+			errors.Is(err, ErrUnsupportedRule),
+			errors.Is(err, ErrEmptyLine):
 			logger.Info(err, ": ", strings.TrimSpace(ruleStr))
 		default:
 			logger.Info("cannot parse rule: ", err)
