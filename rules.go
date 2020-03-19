@@ -118,11 +118,11 @@ func parseRule(ruleText string) (*ruleAdBlock, error) {
 				if strings.HasPrefix(option, "domain=") {
 					rule.domains = parseDomainOption(option)
 				} else {
-					if ok := strings.Contains(supportedOptionsPat, option); !ok {
-						logger.Info(ErrUnsupportedRule, ": ", strings.TrimSpace(option))
+					optionName := strings.TrimPrefix(option, "~")
+					if ok := strings.Contains(supportedOptionsPat, optionName); !ok {
 						return nil, ErrUnsupportedRule
 					}
-					rule.options[strings.TrimPrefix(option, "~")] = !strings.HasPrefix(option, "~")
+					rule.options[optionName] = !strings.HasPrefix(option, "~")
 				}
 			}
 		}
@@ -134,19 +134,28 @@ func parseRule(ruleText string) (*ruleAdBlock, error) {
 }
 
 type RuleSet struct {
-	regexBasicString            string
-	regexBasicWhitelistString   string
-	regexBasic                  *regexp.Regexp
-	regexBasicWhitelist         *regexp.Regexp
-	rulesOptionsString          map[string]string
-	rulesOptionsWhitelistString map[string]string
-	rulesOptionsRegex           map[string]*regexp.Regexp
-	rulesOptionsWhitelistRegex  map[string]*regexp.Regexp
+	stringBasicWhitelist string
+	regexBasicWhitelist  *regexp.Regexp
+
+	stringBasicBlacklist string
+	regexBasicBlacklist  *regexp.Regexp
+
+	stringBlacklistIncludeOptions map[string]string
+	regexBlacklistIncludeOptions  map[string]*regexp.Regexp
+
+	stringBlacklistExcludeOptions map[string]string
+	regexBlacklistExcludeOptions  map[string]*regexp.Regexp
+
+	stringWhitelistIncludeOptions map[string]string
+	regexWhitelistIncludeOptions  map[string]*regexp.Regexp
+
+	stringWhitelistExcludeOptions map[string]string
+	regexWhitelistExcludeOptions  map[string]*regexp.Regexp
 }
 
 func matchWhite(ruleSet RuleSet, req Request) bool {
 	didMatch := false
-	if ruleSet.regexBasicWhitelistString != `` {
+	if ruleSet.stringBasicWhitelist != `` {
 		didMatch = ruleSet.regexBasicWhitelist.MatchString(req.URL.String())
 	}
 	if didMatch {
@@ -155,10 +164,16 @@ func matchWhite(ruleSet RuleSet, req Request) bool {
 
 	options := extractOptionsFromRequest(req)
 	for option, active := range options {
-		if active && ruleSet.rulesOptionsWhitelistString[option] != `` {
-			didMatch = ruleSet.rulesOptionsWhitelistRegex[option].MatchString(req.URL.String())
+		if ruleSet.stringWhitelistIncludeOptions[option] != `` {
+			didMatch = ruleSet.regexWhitelistIncludeOptions[option].MatchString(req.URL.String())
 			if didMatch {
-				return true
+				return active == true
+			}
+		}
+		if ruleSet.stringWhitelistExcludeOptions[option] != `` {
+			didMatch = ruleSet.regexWhitelistExcludeOptions[option].MatchString(req.URL.String())
+			if didMatch {
+				return active == false
 			}
 		}
 	}
@@ -167,8 +182,8 @@ func matchWhite(ruleSet RuleSet, req Request) bool {
 
 func matchBlack(ruleSet RuleSet, req Request) bool {
 	didMatch := false
-	if ruleSet.regexBasicString != `` {
-		didMatch = ruleSet.regexBasic.MatchString(req.URL.String())
+	if ruleSet.stringBasicBlacklist != `` {
+		didMatch = ruleSet.regexBasicBlacklist.MatchString(req.URL.String())
 	}
 	if didMatch {
 		return true
@@ -176,10 +191,16 @@ func matchBlack(ruleSet RuleSet, req Request) bool {
 
 	options := extractOptionsFromRequest(req)
 	for option, active := range options {
-		if active && ruleSet.rulesOptionsString[option] != `` {
-			didMatch = ruleSet.rulesOptionsRegex[option].MatchString(req.URL.String())
+		if ruleSet.stringBlacklistIncludeOptions[option] != `` {
+			didMatch = ruleSet.regexBlacklistIncludeOptions[option].MatchString(req.URL.String())
 			if didMatch {
-				return true
+				return active == true
+			}
+		}
+		if ruleSet.stringBlacklistExcludeOptions[option] != `` {
+			didMatch = ruleSet.regexBlacklistExcludeOptions[option].MatchString(req.URL.String())
+			if didMatch {
+				return active == false
 			}
 		}
 	}
@@ -230,10 +251,18 @@ func NewRuleSetFromStr(rulesStr []string) (*RuleSet, error) {
 	logger.SetFlags(log.LstdFlags)
 
 	ruleSet := &RuleSet{
-		rulesOptionsString:          make(map[string]string, len(supportedOptions)),
-		rulesOptionsWhitelistString: make(map[string]string, len(supportedOptions)),
-		rulesOptionsRegex:           make(map[string]*regexp.Regexp, len(supportedOptions)),
-		rulesOptionsWhitelistRegex:  make(map[string]*regexp.Regexp, len(supportedOptions)),
+		// stringBasicWhitelist
+		// regexBasicWhitelist
+		// stringBasicBlacklist
+		// regexBasicBlacklist
+		stringBlacklistIncludeOptions: make(map[string]string, len(supportedOptions)),
+		regexBlacklistIncludeOptions:  make(map[string]*regexp.Regexp, len(supportedOptions)),
+		stringBlacklistExcludeOptions: make(map[string]string, len(supportedOptions)),
+		regexBlacklistExcludeOptions:  make(map[string]*regexp.Regexp, len(supportedOptions)),
+		stringWhitelistIncludeOptions: make(map[string]string, len(supportedOptions)),
+		regexWhitelistIncludeOptions:  make(map[string]*regexp.Regexp, len(supportedOptions)),
+		stringWhitelistExcludeOptions: make(map[string]string, len(supportedOptions)),
+		regexWhitelistExcludeOptions:  make(map[string]*regexp.Regexp, len(supportedOptions)),
 	}
 
 	// Start parsing
@@ -244,34 +273,51 @@ func NewRuleSetFromStr(rulesStr []string) (*RuleSet, error) {
 		case err == nil:
 			if rule.options != nil && len(rule.options) > 0 {
 				if rule.isException {
-					for option := range rule.options {
-						if ruleSet.rulesOptionsWhitelistString[option] == `` {
-							ruleSet.rulesOptionsWhitelistString[option] = rule.regexString
+					for option, include := range rule.options {
+						if include {
+							if ruleSet.stringWhitelistIncludeOptions[option] == `` {
+								ruleSet.stringWhitelistIncludeOptions[option] = rule.regexString
+							} else {
+								ruleSet.stringWhitelistIncludeOptions[option] = ruleSet.stringWhitelistIncludeOptions[option] + `|` + rule.regexString
+							}
 						} else {
-							ruleSet.rulesOptionsWhitelistString[option] = ruleSet.rulesOptionsWhitelistString[option] + `|` + rule.regexString
+							if ruleSet.stringWhitelistExcludeOptions[option] == `` {
+								ruleSet.stringWhitelistExcludeOptions[option] = rule.regexString
+							} else {
+								ruleSet.stringWhitelistExcludeOptions[option] = ruleSet.stringWhitelistExcludeOptions[option] + `|` + rule.regexString
+							}
 						}
 					}
 				} else {
-					for option := range rule.options {
-						if ruleSet.rulesOptionsString[option] == `` {
-							ruleSet.rulesOptionsString[option] = rule.regexString
+					for option, include := range rule.options {
+						if include {
+							if ruleSet.stringBlacklistIncludeOptions[option] == `` {
+								ruleSet.stringBlacklistIncludeOptions[option] = rule.regexString
+							} else {
+								ruleSet.stringBlacklistIncludeOptions[option] = ruleSet.stringBlacklistIncludeOptions[option] + `|` + rule.regexString
+							}
 						} else {
-							ruleSet.rulesOptionsString[option] = ruleSet.rulesOptionsString[option] + `|` + rule.regexString
+							if ruleSet.stringBlacklistExcludeOptions[option] == `` {
+								ruleSet.stringBlacklistExcludeOptions[option] = rule.regexString
+							} else {
+								ruleSet.stringBlacklistExcludeOptions[option] = ruleSet.stringBlacklistExcludeOptions[option] + `|` + rule.regexString
+							}
+
 						}
 					}
 				}
 			} else {
 				if rule.isException {
-					if ruleSet.regexBasicWhitelistString == `` {
-						ruleSet.regexBasicWhitelistString = rule.regexString
+					if ruleSet.stringBasicWhitelist == `` {
+						ruleSet.stringBasicWhitelist = rule.regexString
 					} else {
-						ruleSet.regexBasicWhitelistString = ruleSet.regexBasicWhitelistString + `|` + rule.regexString
+						ruleSet.stringBasicWhitelist = ruleSet.stringBasicWhitelist + `|` + rule.regexString
 					}
 				} else {
-					if ruleSet.regexBasicString == `` {
-						ruleSet.regexBasicString = rule.regexString
+					if ruleSet.stringBasicBlacklist == `` {
+						ruleSet.stringBasicBlacklist = rule.regexString
 					} else {
-						ruleSet.regexBasicString = ruleSet.regexBasicString + `|` + rule.regexString
+						ruleSet.stringBasicBlacklist = ruleSet.stringBasicBlacklist + `|` + rule.regexString
 					}
 				}
 			}
@@ -286,15 +332,26 @@ func NewRuleSetFromStr(rulesStr []string) (*RuleSet, error) {
 		}
 	}
 
-	ruleSet.regexBasic = regexp.MustCompile(ruleSet.regexBasicString)
-	ruleSet.regexBasicWhitelist = regexp.MustCompile(ruleSet.regexBasicWhitelistString)
-	for option, _ := range ruleSet.rulesOptionsString {
-		ruleSet.rulesOptionsRegex[option] = regexp.MustCompile(ruleSet.rulesOptionsString[option])
-		ruleSet.rulesOptionsWhitelistRegex[option] = regexp.MustCompile(ruleSet.rulesOptionsWhitelistString[option])
-	}
+	compileAllRegex(ruleSet)
 	return ruleSet, nil
 }
 
+func compileAllRegex(ruleSet *RuleSet) {
+	ruleSet.regexBasicWhitelist = regexp.MustCompile(ruleSet.stringBasicWhitelist)
+	ruleSet.regexBasicBlacklist = regexp.MustCompile(ruleSet.stringBasicBlacklist)
+	for option, _ := range ruleSet.stringWhitelistIncludeOptions {
+		ruleSet.regexWhitelistIncludeOptions[option] = regexp.MustCompile(ruleSet.stringWhitelistIncludeOptions[option])
+	}
+	for option, _ := range ruleSet.stringWhitelistExcludeOptions {
+		ruleSet.regexWhitelistExcludeOptions[option] = regexp.MustCompile(ruleSet.stringWhitelistExcludeOptions[option])
+	}
+	for option, _ := range ruleSet.stringBlacklistIncludeOptions {
+		ruleSet.regexBlacklistIncludeOptions[option] = regexp.MustCompile(ruleSet.stringBlacklistIncludeOptions[option])
+	}
+	for option, _ := range ruleSet.stringBlacklistExcludeOptions {
+		ruleSet.regexBlacklistExcludeOptions[option] = regexp.MustCompile(ruleSet.stringBlacklistExcludeOptions[option])
+	}
+}
 func (rule *ruleAdBlock) OptionsKeys() []string {
 	opts := []string{}
 	for option := range rule.options {
