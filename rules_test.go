@@ -219,4 +219,5 @@ func TestExtractOptionsFromRequest(t *testing.T) {
 	assert.False(t, options["image"])
 	assert.False(t, options["stylesheet"])
 	assert.False(t, options["font"])
+	assert.False(t, options["xmlhttprequest"])
 }

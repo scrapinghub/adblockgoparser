@@ -51,6 +51,7 @@ var (
 		"stylesheet",
 		"font",
 		"thirdparty",
+		"xmlhttprequest",
 	}
 	supportedOptionsPat = strings.Join(supportedOptions, ",")
 )
@@ -390,6 +391,7 @@ func extractOptionsFromRequest(req Request) map[string]bool {
 	// More font extension at https://fileinfo.com/filetypes/font
 	result["font"] = regexp.MustCompile(`(?:\.otf|\.ttf|\.fnt)`).MatchString(filename)
 	result["thirdparty"] = req.Referer != ""
+	result["xmlhttprequest"] = req.IsXHR
 
 	return result
 }
