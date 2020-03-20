@@ -146,6 +146,12 @@ type RuleSet struct {
 	stringBlacklistExcludeOptions map[string]string
 	regexBlacklistExcludeOptions  map[string]*regexp.Regexp
 
+	stringBlacklistIncludeDomains map[string]string
+	regexBlacklistIncludeDomains  map[string]*regexp.Regexp
+
+	stringBlacklistExcludeDomains map[string]string
+	regexBlacklistExcludeDomains  map[string]*regexp.Regexp
+
 	stringWhitelistIncludeOptions map[string]string
 	regexWhitelistIncludeOptions  map[string]*regexp.Regexp
 
@@ -187,6 +193,22 @@ func matchBlack(ruleSet RuleSet, req Request) bool {
 	}
 	if didMatch {
 		return true
+	}
+
+	disabledForDomain := false
+	for domain := range ruleSet.stringBlacklistExcludeDomains {
+		disabledForDomain = strings.Contains(req.URL.Hostname(), domain)
+	}
+	if !disabledForDomain {
+		for domain := range ruleSet.stringBlacklistIncludeDomains {
+			lookForDomain := strings.Contains(req.URL.Hostname(), domain)
+			if lookForDomain && ruleSet.stringBlacklistIncludeDomains[domain] != `` {
+				didMatch = ruleSet.regexBlacklistIncludeDomains[domain].MatchString(req.URL.String())
+				if didMatch {
+					return true
+				}
+			}
+		}
 	}
 
 	options := extractOptionsFromRequest(req)
@@ -251,18 +273,23 @@ func NewRuleSetFromStr(rulesStr []string) (*RuleSet, error) {
 	logger.SetFlags(log.LstdFlags)
 
 	ruleSet := &RuleSet{
-		// stringBasicWhitelist
-		// regexBasicWhitelist
-		// stringBasicBlacklist
-		// regexBasicBlacklist
-		stringBlacklistIncludeOptions: make(map[string]string, len(supportedOptions)),
-		regexBlacklistIncludeOptions:  make(map[string]*regexp.Regexp, len(supportedOptions)),
-		stringBlacklistExcludeOptions: make(map[string]string, len(supportedOptions)),
-		regexBlacklistExcludeOptions:  make(map[string]*regexp.Regexp, len(supportedOptions)),
-		stringWhitelistIncludeOptions: make(map[string]string, len(supportedOptions)),
-		regexWhitelistIncludeOptions:  make(map[string]*regexp.Regexp, len(supportedOptions)),
-		stringWhitelistExcludeOptions: make(map[string]string, len(supportedOptions)),
-		regexWhitelistExcludeOptions:  make(map[string]*regexp.Regexp, len(supportedOptions)),
+		stringBlacklistIncludeOptions: map[string]string{},
+		regexBlacklistIncludeOptions:  map[string]*regexp.Regexp{},
+
+		stringBlacklistExcludeOptions: map[string]string{},
+		regexBlacklistExcludeOptions:  map[string]*regexp.Regexp{},
+
+		stringBlacklistIncludeDomains: map[string]string{},
+		regexBlacklistIncludeDomains:  map[string]*regexp.Regexp{},
+
+		stringBlacklistExcludeDomains: map[string]string{},
+		regexBlacklistExcludeDomains:  map[string]*regexp.Regexp{},
+
+		stringWhitelistIncludeOptions: map[string]string{},
+		regexWhitelistIncludeOptions:  map[string]*regexp.Regexp{},
+
+		stringWhitelistExcludeOptions: map[string]string{},
+		regexWhitelistExcludeOptions:  map[string]*regexp.Regexp{},
 	}
 
 	// Start parsing
@@ -271,10 +298,28 @@ func NewRuleSetFromStr(rulesStr []string) (*RuleSet, error) {
 
 		switch {
 		case err == nil:
-			if rule.options != nil && len(rule.options) > 0 {
+			if len(rule.domains) > 0 && len(rule.options) == 0 {
+				for domain, allowed := range rule.domains {
+					if allowed {
+						if ruleSet.stringBlacklistIncludeDomains[domain] == `` {
+							ruleSet.stringBlacklistIncludeDomains[domain] = rule.regexString
+						} else {
+							ruleSet.stringBlacklistIncludeDomains[domain] = ruleSet.stringBlacklistIncludeDomains[domain] + `|` + rule.regexString
+						}
+					} else {
+						if ruleSet.stringBlacklistExcludeDomains[domain] == `` {
+							ruleSet.stringBlacklistExcludeDomains[domain] = rule.regexString
+						} else {
+							ruleSet.stringBlacklistExcludeDomains[domain] = ruleSet.stringBlacklistExcludeDomains[domain] + `|` + rule.regexString
+						}
+					}
+				}
+				continue
+			}
+			if len(rule.options) > 0 {
 				if rule.isException {
-					for option, include := range rule.options {
-						if include {
+					for option, allowed := range rule.options {
+						if allowed {
 							if ruleSet.stringWhitelistIncludeOptions[option] == `` {
 								ruleSet.stringWhitelistIncludeOptions[option] = rule.regexString
 							} else {
@@ -289,8 +334,8 @@ func NewRuleSetFromStr(rulesStr []string) (*RuleSet, error) {
 						}
 					}
 				} else {
-					for option, include := range rule.options {
-						if include {
+					for option, allowed := range rule.options {
+						if allowed {
 							if ruleSet.stringBlacklistIncludeOptions[option] == `` {
 								ruleSet.stringBlacklistIncludeOptions[option] = rule.regexString
 							} else {
@@ -323,9 +368,10 @@ func NewRuleSetFromStr(rulesStr []string) (*RuleSet, error) {
 			}
 		case errors.Is(err, ErrSkipComment),
 			errors.Is(err, ErrSkipHTML),
-			errors.Is(err, ErrUnsupportedRule),
-			errors.Is(err, ErrEmptyLine):
+			errors.Is(err, ErrUnsupportedRule):
 			logger.Info(err, ": ", strings.TrimSpace(ruleStr))
+		case errors.Is(err, ErrEmptyLine):
+			logger.Info(err)
 		default:
 			logger.Info("cannot parse rule: ", err)
 			return nil, fmt.Errorf("cannot parse rule: %w", err)
@@ -350,6 +396,12 @@ func compileAllRegex(ruleSet *RuleSet) {
 	}
 	for option, _ := range ruleSet.stringBlacklistExcludeOptions {
 		ruleSet.regexBlacklistExcludeOptions[option] = regexp.MustCompile(ruleSet.stringBlacklistExcludeOptions[option])
+	}
+	for domain, _ := range ruleSet.stringBlacklistIncludeDomains {
+		ruleSet.regexBlacklistIncludeDomains[domain] = regexp.MustCompile(ruleSet.stringBlacklistIncludeDomains[domain])
+	}
+	for domain, _ := range ruleSet.stringBlacklistExcludeDomains {
+		ruleSet.regexBlacklistExcludeDomains[domain] = regexp.MustCompile(ruleSet.stringBlacklistExcludeDomains[domain])
 	}
 }
 func (rule *ruleAdBlock) OptionsKeys() []string {
