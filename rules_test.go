@@ -189,7 +189,7 @@ func TestRuleWithScriptOption(t *testing.T) {
 	rules := []string{"||ads.example.com^$script"}
 	ruleSet, err := NewRuleSetFromStr(rules)
 	assert.NoError(t, err)
-	assert.NotNil(t, ruleSet.blacklistIncludeOptionsRegex["script"])
+	assert.NotNil(t, ruleSet.blacklistIncludeOptions["script"])
 	assert.Nil(t, ruleSet.blacklistExcludeOptionsRegex["script"])
 	assert.True(t, ruleSet.Allow(reqFromURL("http://ads.example.com/")))
 	assert.False(t, ruleSet.Allow(reqFromURL("http://ads.example.com/file.js")))
@@ -199,38 +199,37 @@ func TestRuleWithScriptOption(t *testing.T) {
 	ruleSet, err = NewRuleSetFromStr(rules)
 	assert.NoError(t, err)
 	assert.Nil(t, ruleSet.blacklistIncludeOptionsRegex["script"])
-	assert.NotNil(t, ruleSet.blacklistExcludeOptionsRegex["script"])
+	assert.NotNil(t, ruleSet.blacklistExcludeOptions["script"])
 	assert.False(t, ruleSet.Allow(reqFromURL("http://ads.example.com/")))
 	assert.True(t, ruleSet.Allow(reqFromURL("http://ads.example.com/file.js")))
 
 }
 
 func TestRuleWithScriptOptionOnWhitelist(t *testing.T) {
-	// Block everything on ads.example.com domain, execept if it is script
+	// Block everything on ads.example.com domain, except if it is script
 	rules := []string{"||ads.example.com^", "@@||ads.example.com^$script"}
 	ruleSet, err := NewRuleSetFromStr(rules)
 	assert.NoError(t, err)
 	assert.Nil(t, ruleSet.blacklistIncludeOptionsRegex["script"])
 	assert.Nil(t, ruleSet.blacklistExcludeOptionsRegex["script"])
-	assert.NotNil(t, ruleSet.whitelistIncludeOptionsRegex["script"])
+	assert.NotNil(t, ruleSet.whitelistIncludeOptions["script"])
 	assert.Nil(t, ruleSet.whitelistExcludeOptionsRegex["script"])
 	assert.False(t, ruleSet.Allow(reqFromURL("http://ads.example.com/")))
 	assert.True(t, ruleSet.Allow(reqFromURL("http://ads.example.com/file.js")))
 
-	// Block everything on ads.example.com domain, execept if it is not script
+	// Block everything on ads.example.com domain, except if it is not script
 	rules = []string{"||ads.example.com^", "@@||ads.example.com^$~script"}
 	ruleSet, err = NewRuleSetFromStr(rules)
 	assert.NoError(t, err)
 	assert.Nil(t, ruleSet.blacklistIncludeOptionsRegex["script"])
 	assert.Nil(t, ruleSet.blacklistExcludeOptionsRegex["script"])
 	assert.Nil(t, ruleSet.whitelistIncludeOptionsRegex["script"])
-	assert.NotNil(t, ruleSet.whitelistExcludeOptionsRegex["script"])
+	assert.NotNil(t, ruleSet.whitelistExcludeOptions["script"])
 	assert.True(t, ruleSet.Allow(reqFromURL("http://ads.example.com/")))
 	assert.False(t, ruleSet.Allow(reqFromURL("http://ads.example.com/file.js")))
 }
 
 func TestRuleWithDomainOption(t *testing.T) {
-	// Block everything on ads.example.com domain, execept if it is script
 	rules := []string{"/banner/*/img$domain=example.com|~bar.example.com"}
 	ruleSet, err := NewRuleSetFromStr(rules)
 	assert.NoError(t, err)
@@ -244,11 +243,32 @@ func TestRuleWithDomainOption(t *testing.T) {
 	assert.True(t, ruleSet.Allow(reqFromURL("http://anysubdomain.example.net/banner/foo/img")))
 }
 
+func TestRuleWithDomainOptionAndMoreOptions(t *testing.T) {
+	rules := []string{"||example.com^$script,domain=example.com|~bar.example.com", "||nonrelated.com^$script"}
+	ruleSet, err := NewRuleSetFromStr(rules)
+	assert.NoError(t, err)
+	// Block for `example.com` domain and its subdomain, since it is script
+	assert.False(t, ruleSet.Allow(reqFromURL("http://example.com/file.js")))
+	assert.False(t, ruleSet.Allow(reqFromURL("http://anysubdomain.example.com/file.js")))
+	// Do not block if it is not script
+	assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/banner/foo/img")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://anysubdomain.example.com/banner/foo/img")))
+	// Do not block for `bar` subdomain and its subdomain or other domain, even for script
+	assert.True(t, ruleSet.Allow(reqFromURL("http://bar.example.com/banner/foo/img")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://foo.bar.example.com/banner/foo/img")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://example.net/banner/foo/img")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://anysubdomain.example.net/banner/foo/img")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://bar.example.com/banner/foo/file.js")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://foo.bar.example.com/banner/foo/file.js")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://example.net/banner/foo/file.js")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://anysubdomain.example.net/banner/foo/file.js")))
+}
+
 func TestRuleWithImageOption(t *testing.T) {
 	rules := []string{"/banner/*/img^$image"}
 	ruleSet, err := NewRuleSetFromStr(rules)
 	assert.NoError(t, err)
-	assert.NotNil(t, ruleSet.blacklistIncludeOptionsRegex["image"])
+	assert.NotNil(t, ruleSet.blacklistIncludeOptions["image"])
 }
 
 func TestRuleSetWithStyleSheetOption(t *testing.T) {
