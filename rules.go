@@ -14,6 +14,7 @@ var (
 	ErrSkipHTML        = errors.New("HTML rules are skipped")
 	ErrEmptyLine       = errors.New("Empty lines are skipped")
 	ErrUnsupportedRule = errors.New("Unsupported option rules are skipped")
+	ErrCompilingRegex  = errors.New("Error compiling regexp")
 	binaryOptions      = []string{
 		"document",
 		"domain",
@@ -122,8 +123,11 @@ func ParseRule(ruleText string) (*ruleAdBlock, error) {
 		}
 	}
 
-	rule.regex = regexp.MustCompile(ruleToRegexp(ruleText))
-
+	re, err := regexp.Compile(ruleToRegexp(ruleText))
+	if err != nil {
+		return nil, ErrCompilingRegex
+	}
+	rule.regex = re
 	return rule, nil
 }
 
@@ -164,7 +168,11 @@ func matchWhite(ruleSet RuleSet, req Request) bool {
 		}
 	}
 
-	whitelistDomainsRegex := combinedRegex(rules)
+	whitelistDomainsRegex, err := combinedRegex(rules)
+	if err != nil {
+		// ErrCompilingRegex
+	}
+
 	if whitelistDomainsRegex != nil && whitelistDomainsRegex.MatchString(req.URL.String()) {
 		return true
 	}
@@ -220,7 +228,11 @@ func matchBlack(ruleSet RuleSet, req Request) bool {
 		}
 	}
 
-	blacklistDomainsRegex := combinedRegex(rules)
+	blacklistDomainsRegex, err := combinedRegex(rules)
+	if err != nil {
+		// ErrCompilingRegex
+	}
+
 	if blacklistDomainsRegex != nil && blacklistDomainsRegex.MatchString(req.URL.String()) {
 		return true
 	}
@@ -279,11 +291,20 @@ func addRulesToOptions(rules []*ruleAdBlock, includeOptions map[string][]*ruleAd
 
 	includeRegex := map[string]*regexp.Regexp{}
 	excludeRegex := map[string]*regexp.Regexp{}
+	var err error
 	for option, _ := range include {
-		includeRegex[option] = combinedRegex(include[option])
+		includeRegex[option], err = combinedRegex(include[option])
+		if err != nil {
+			// ErrCompilingRegex
+		}
+
 	}
 	for option, _ := range exclude {
-		excludeRegex[option] = combinedRegex(exclude[option])
+		excludeRegex[option], err = combinedRegex(exclude[option])
+		if err != nil {
+			// ErrCompilingRegex
+		}
+
 	}
 
 	return includeRegex, excludeRegex
@@ -373,13 +394,21 @@ func NewRuleSetFromStr(rulesStr []string) (*RuleSet, error) {
 			return nil, fmt.Errorf("Cannot parse rule: %w", err)
 		}
 	}
-	ruleSet.whitelistRegex = combinedRegex(ruleSet.whitelist)
-	ruleSet.blacklistRegex = combinedRegex(ruleSet.blacklist)
+	var err error
+	ruleSet.whitelistRegex, err = combinedRegex(ruleSet.whitelist)
+	if err != nil {
+		// ErrCompilingRegex
+	}
+
+	ruleSet.blacklistRegex, err = combinedRegex(ruleSet.blacklist)
+	if err != nil {
+		// ErrCompilingRegex
+	}
 
 	return ruleSet, nil
 }
 
-func combinedRegex(rules []*ruleAdBlock) *regexp.Regexp {
+func combinedRegex(rules []*ruleAdBlock) (*regexp.Regexp, error) {
 	var b strings.Builder
 	for n, rule := range rules {
 		if n == 0 {
@@ -389,9 +418,15 @@ func combinedRegex(rules []*ruleAdBlock) *regexp.Regexp {
 		fmt.Fprintf(&b, "|%s", rule.regex.String())
 	}
 	if b.String() == "" {
-		return nil
+		return nil, nil
 	}
-	return regexp.MustCompile(b.String())
+
+	re, err := regexp.Compile(b.String())
+	if err != nil {
+		return nil, ErrCompilingRegex
+	}
+	return re, nil
+
 }
 
 func parseDomainOption(text string) map[string]bool {
