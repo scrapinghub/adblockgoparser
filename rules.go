@@ -139,27 +139,15 @@ type RuleSet struct {
 	blacklist      []*ruleAdBlock
 	blacklistRegex *regexp.Regexp
 
-	whitelistDomainsNoOptions    []*ruleAdBlock
-	whitelistDomainsWithOptions  []*ruleAdBlock
-	whitelistIncludeDomains      map[string][]*ruleAdBlock
-	whitelistIncludeDomainsRegex map[string]*regexp.Regexp
-	whitelistExcludeDomains      map[string][]*ruleAdBlock
-	whitelistExcludeDomainsRegex map[string]*regexp.Regexp
-	blacklistDomainsNoOptions    []*ruleAdBlock
-	blacklistDomainsWithOptions  []*ruleAdBlock
-	blacklistIncludeDomains      map[string][]*ruleAdBlock
-	blacklistIncludeDomainsRegex map[string]*regexp.Regexp
-	blacklistExcludeDomains      map[string][]*ruleAdBlock
-	blacklistExcludeDomainsRegex map[string]*regexp.Regexp
+	whitelistDomainsNoOptions   []*ruleAdBlock
+	whitelistDomainsWithOptions []*ruleAdBlock
+	blacklistDomainsNoOptions   []*ruleAdBlock
+	blacklistDomainsWithOptions []*ruleAdBlock
 
-	whitelistIncludeOptions      map[string][]*ruleAdBlock
-	whitelistIncludeOptionsRegex map[string]*regexp.Regexp
-	whitelistExcludeOptions      map[string][]*ruleAdBlock
-	whitelistExcludeOptionsRegex map[string]*regexp.Regexp
-	blacklistIncludeOptions      map[string][]*ruleAdBlock
-	blacklistIncludeOptionsRegex map[string]*regexp.Regexp
-	blacklistExcludeOptions      map[string][]*ruleAdBlock
-	blacklistExcludeOptionsRegex map[string]*regexp.Regexp
+	whitelistIncludeOptions map[string][]*ruleAdBlock
+	whitelistExcludeOptions map[string][]*ruleAdBlock
+	blacklistIncludeOptions map[string][]*ruleAdBlock
+	blacklistExcludeOptions map[string][]*ruleAdBlock
 }
 
 func matchWhite(ruleSet RuleSet, req Request) bool {
@@ -351,23 +339,10 @@ func NewRuleSetFromStr(rulesStr []string) (*RuleSet, error) {
 	logger.SetFlags(log.LstdFlags)
 
 	ruleSet := &RuleSet{
-		whitelistIncludeDomains:      map[string][]*ruleAdBlock{},
-		whitelistIncludeDomainsRegex: map[string]*regexp.Regexp{},
-		whitelistExcludeDomains:      map[string][]*ruleAdBlock{},
-		whitelistExcludeDomainsRegex: map[string]*regexp.Regexp{},
-		blacklistIncludeDomains:      map[string][]*ruleAdBlock{},
-		blacklistIncludeDomainsRegex: map[string]*regexp.Regexp{},
-		blacklistExcludeDomains:      map[string][]*ruleAdBlock{},
-		blacklistExcludeDomainsRegex: map[string]*regexp.Regexp{},
-
-		whitelistIncludeOptions:      map[string][]*ruleAdBlock{},
-		whitelistIncludeOptionsRegex: map[string]*regexp.Regexp{},
-		whitelistExcludeOptions:      map[string][]*ruleAdBlock{},
-		whitelistExcludeOptionsRegex: map[string]*regexp.Regexp{},
-		blacklistIncludeOptions:      map[string][]*ruleAdBlock{},
-		blacklistIncludeOptionsRegex: map[string]*regexp.Regexp{},
-		blacklistExcludeOptions:      map[string][]*ruleAdBlock{},
-		blacklistExcludeOptionsRegex: map[string]*regexp.Regexp{},
+		whitelistIncludeOptions: map[string][]*ruleAdBlock{},
+		whitelistExcludeOptions: map[string][]*ruleAdBlock{},
+		blacklistIncludeOptions: map[string][]*ruleAdBlock{},
+		blacklistExcludeOptions: map[string][]*ruleAdBlock{},
 	}
 
 	// Start parsing

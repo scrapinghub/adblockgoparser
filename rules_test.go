@@ -190,7 +190,7 @@ func TestRuleWithScriptOption(t *testing.T) {
 	ruleSet, err := NewRuleSetFromStr(rules)
 	assert.NoError(t, err)
 	assert.NotNil(t, ruleSet.blacklistIncludeOptions["script"])
-	assert.Nil(t, ruleSet.blacklistExcludeOptionsRegex["script"])
+	assert.Nil(t, ruleSet.blacklistExcludeOptions["script"])
 	assert.True(t, ruleSet.Allow(reqFromURL("http://ads.example.com/")))
 	assert.False(t, ruleSet.Allow(reqFromURL("http://ads.example.com/file.js")))
 
@@ -198,7 +198,7 @@ func TestRuleWithScriptOption(t *testing.T) {
 	rules = []string{"||ads.example.com^$~script"}
 	ruleSet, err = NewRuleSetFromStr(rules)
 	assert.NoError(t, err)
-	assert.Nil(t, ruleSet.blacklistIncludeOptionsRegex["script"])
+	assert.Nil(t, ruleSet.blacklistIncludeOptions["script"])
 	assert.NotNil(t, ruleSet.blacklistExcludeOptions["script"])
 	assert.False(t, ruleSet.Allow(reqFromURL("http://ads.example.com/")))
 	assert.True(t, ruleSet.Allow(reqFromURL("http://ads.example.com/file.js")))
@@ -210,10 +210,10 @@ func TestRuleWithScriptOptionOnWhitelist(t *testing.T) {
 	rules := []string{"||ads.example.com^", "@@||ads.example.com^$script"}
 	ruleSet, err := NewRuleSetFromStr(rules)
 	assert.NoError(t, err)
-	assert.Nil(t, ruleSet.blacklistIncludeOptionsRegex["script"])
-	assert.Nil(t, ruleSet.blacklistExcludeOptionsRegex["script"])
+	assert.Nil(t, ruleSet.blacklistIncludeOptions["script"])
+	assert.Nil(t, ruleSet.blacklistExcludeOptions["script"])
 	assert.NotNil(t, ruleSet.whitelistIncludeOptions["script"])
-	assert.Nil(t, ruleSet.whitelistExcludeOptionsRegex["script"])
+	assert.Nil(t, ruleSet.whitelistExcludeOptions["script"])
 	assert.False(t, ruleSet.Allow(reqFromURL("http://ads.example.com/")))
 	assert.True(t, ruleSet.Allow(reqFromURL("http://ads.example.com/file.js")))
 
@@ -221,9 +221,9 @@ func TestRuleWithScriptOptionOnWhitelist(t *testing.T) {
 	rules = []string{"||ads.example.com^", "@@||ads.example.com^$~script"}
 	ruleSet, err = NewRuleSetFromStr(rules)
 	assert.NoError(t, err)
-	assert.Nil(t, ruleSet.blacklistIncludeOptionsRegex["script"])
-	assert.Nil(t, ruleSet.blacklistExcludeOptionsRegex["script"])
-	assert.Nil(t, ruleSet.whitelistIncludeOptionsRegex["script"])
+	assert.Nil(t, ruleSet.blacklistIncludeOptions["script"])
+	assert.Nil(t, ruleSet.blacklistExcludeOptions["script"])
+	assert.Nil(t, ruleSet.whitelistIncludeOptions["script"])
 	assert.NotNil(t, ruleSet.whitelistExcludeOptions["script"])
 	assert.True(t, ruleSet.Allow(reqFromURL("http://ads.example.com/")))
 	assert.False(t, ruleSet.Allow(reqFromURL("http://ads.example.com/file.js")))
