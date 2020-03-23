@@ -127,13 +127,9 @@ func TestNewRuleSetFromLongStr(t *testing.T) {
 
 func TestNewRuleSetFromFile(t *testing.T) {
 	rules := []string{
-		// "[Adblock comment",
-		// "!Other comment",
-		// "anyhtmlrule.com#@##AdImage",
 		"/banner/*/img^",
 		"||ads.example.com^",
 		"|http://example.com/|",
-		// "||domain.net^$badoption",
 	}
 
 	ruleSet, err := NewRuleSetFromStr(rules)
@@ -162,13 +158,9 @@ func TestNewRuleSetFromFile(t *testing.T) {
 
 	// Now add some exceptions
 	rules = []string{
-		// "[Adblock comment",
-		// "!Other comment",
-		// "anyhtmlrule.com#@##AdImage",
 		"/banner/*/img^",
 		"||ads.example.com^",
 		"|http://example.com/|",
-		// "||domain.net^$badoption",
 		"@@/banner/*/img^",
 		"@@||ads.example.com^",
 		"@@|http://example.com/|",
