@@ -1,18 +1,12 @@
 package adblockgoparser
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
-	"io/ioutil"
-	"log"
 	"net/url"
-	"os"
 	"path"
 	"regexp"
 	"strings"
-
-	"github.com/google/logger"
 )
 
 var (
@@ -42,8 +36,6 @@ var (
 		"websocket",
 		"xmlhttprequest",
 	}
-	optionsSplitPat = fmt.Sprintf(",(~?(?:%v))", strings.Join(binaryOptions, "|"))
-	optionsSplitRe  = regexp.MustCompile(optionsSplitPat)
 	// Except domain
 	supportedOptions = []string{
 		"image",
@@ -53,7 +45,13 @@ var (
 		"thirdparty",
 		"xmlhttprequest",
 	}
-	supportedOptionsPat = strings.Join(supportedOptions, ",")
+	supportedOptionsPat = func() map[string]struct{} {
+		rv := map[string]struct{}{}
+		for _, key := range supportedOptions {
+			rv[key] = struct{}{}
+		}
+		return rv
+	}()
 )
 
 // Structs
@@ -70,47 +68,43 @@ type Request struct {
 }
 
 type ruleAdBlock struct {
-	raw         string
-	ruleText    string
-	regexString string
 	regex       *regexp.Regexp
 	options     map[string]bool
 	isException bool
 	domains     map[string]bool
 }
 
-func parseRule(ruleText string) (*ruleAdBlock, error) {
-	if strings.TrimSpace(ruleText) == "" {
+func ParseRule(ruleText string) (*ruleAdBlock, error) {
+	ruleText = strings.TrimSpace(ruleText)
+	if ruleText == "" {
 		return nil, ErrEmptyLine
 	}
 	rule := &ruleAdBlock{
-		domains:  map[string]bool{},
-		options:  map[string]bool{},
-		raw:      ruleText,
-		ruleText: strings.TrimSpace(ruleText),
+		domains: map[string]bool{},
+		options: map[string]bool{},
 	}
 
-	isComment := strings.Contains(rule.ruleText, "!") || strings.Contains(rule.ruleText, "[Adblock")
+	isComment := strings.Contains(ruleText, "!") || strings.Contains(ruleText, "[Adblock")
 	if isComment {
 		return nil, ErrSkipComment
 	}
 
-	isHTMLRule := strings.Contains(rule.ruleText, "##") || strings.Contains(rule.ruleText, "#@#")
+	isHTMLRule := strings.Contains(ruleText, "##") || strings.Contains(ruleText, "#@#")
 	if isHTMLRule {
 		return nil, ErrSkipHTML
 	}
 
-	rule.isException = strings.HasPrefix(rule.ruleText, "@@")
+	rule.isException = strings.HasPrefix(ruleText, "@@")
 	if rule.isException {
-		rule.ruleText = rule.ruleText[2:]
+		ruleText = ruleText[2:]
 	}
 
-	if strings.Contains(rule.ruleText, "$") {
-		parts := strings.SplitN(rule.ruleText, "$", 2)
+	if strings.Contains(ruleText, "$") {
+		parts := strings.SplitN(ruleText, "$", 2)
 		length := len(parts)
 
 		if length > 0 {
-			rule.ruleText = parts[0]
+			ruleText = parts[0]
 		}
 
 		if length > 1 {
@@ -119,7 +113,7 @@ func parseRule(ruleText string) (*ruleAdBlock, error) {
 					rule.domains = parseDomainOption(option)
 				} else {
 					optionName := strings.TrimPrefix(option, "~")
-					if ok := strings.Contains(supportedOptionsPat, optionName); !ok {
+					if _, ok := supportedOptionsPat[optionName]; !ok {
 						return nil, ErrUnsupportedRule
 					}
 					rule.options[optionName] = !strings.HasPrefix(option, "~")
@@ -128,7 +122,7 @@ func parseRule(ruleText string) (*ruleAdBlock, error) {
 		}
 	}
 
-	rule.regexString = ruleToRegexp(rule.ruleText)
+	rule.regex = regexp.MustCompile(ruleToRegexp(ruleText))
 
 	return rule, nil
 }
@@ -170,7 +164,7 @@ func matchWhite(ruleSet RuleSet, req Request) bool {
 		}
 	}
 
-	whitelistDomainsRegex := CombinedRegex(rules)
+	whitelistDomainsRegex := combinedRegex(rules)
 	if whitelistDomainsRegex != nil && whitelistDomainsRegex.MatchString(req.URL.String()) {
 		return true
 	}
@@ -226,7 +220,7 @@ func matchBlack(ruleSet RuleSet, req Request) bool {
 		}
 	}
 
-	blacklistDomainsRegex := CombinedRegex(rules)
+	blacklistDomainsRegex := combinedRegex(rules)
 	if blacklistDomainsRegex != nil && blacklistDomainsRegex.MatchString(req.URL.String()) {
 		return true
 	}
@@ -286,10 +280,10 @@ func addRulesToOptions(rules []*ruleAdBlock, includeOptions map[string][]*ruleAd
 	includeRegex := map[string]*regexp.Regexp{}
 	excludeRegex := map[string]*regexp.Regexp{}
 	for option, _ := range include {
-		includeRegex[option] = CombinedRegex(include[option])
+		includeRegex[option] = combinedRegex(include[option])
 	}
 	for option, _ := range exclude {
-		excludeRegex[option] = CombinedRegex(exclude[option])
+		excludeRegex[option] = combinedRegex(exclude[option])
 	}
 
 	return includeRegex, excludeRegex
@@ -305,39 +299,7 @@ func (ruleSet *RuleSet) Allow(req Request) bool {
 	return true
 }
 
-func readLines(path string) ([]string, error) {
-	f, err := os.Open(path)
-
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-
-	reader := bufio.NewReader(f)
-	lines := []string{}
-	for line := []byte{}; err == nil; line, _, err = reader.ReadLine() {
-		sl := strings.TrimSuffix(string(line), "\n\r")
-		if len(sl) == 0 {
-			continue
-		}
-		lines = append(lines, sl)
-	}
-
-	return lines, nil
-}
-
-func NewRulesSetFromFile(path string) (*RuleSet, error) {
-	lines, err := readLines(path)
-	if err != nil {
-		return nil, err
-	}
-	return NewRuleSetFromStr(lines)
-}
-
 func NewRuleSetFromStr(rulesStr []string) (*RuleSet, error) {
-	logger.Init("NewRuleSetFromStr", true, true, ioutil.Discard)
-	logger.SetFlags(log.LstdFlags)
-
 	ruleSet := &RuleSet{
 		whitelistIncludeOptions: map[string][]*ruleAdBlock{},
 		whitelistExcludeOptions: map[string][]*ruleAdBlock{},
@@ -347,7 +309,7 @@ func NewRuleSetFromStr(rulesStr []string) (*RuleSet, error) {
 
 	// Start parsing
 	for _, ruleStr := range rulesStr {
-		rule, err := parseRule(ruleStr)
+		rule, err := ParseRule(ruleStr)
 		switch {
 		case err == nil:
 			// Blacklist without options nor domain filter
@@ -404,31 +366,32 @@ func NewRuleSetFromStr(rulesStr []string) (*RuleSet, error) {
 			}
 		case errors.Is(err, ErrSkipComment),
 			errors.Is(err, ErrSkipHTML),
-			errors.Is(err, ErrUnsupportedRule):
-			logger.Info(err, ": ", strings.TrimSpace(ruleStr))
-		case errors.Is(err, ErrEmptyLine):
-			logger.Info(err)
+			errors.Is(err, ErrUnsupportedRule),
+			errors.Is(err, ErrEmptyLine):
+			return nil, fmt.Errorf("%w: %s", err, ruleStr)
 		default:
-			logger.Info("cannot parse rule: ", err)
-			return nil, fmt.Errorf("cannot parse rule: %w", err)
+			return nil, fmt.Errorf("Cannot parse rule: %w", err)
 		}
 	}
-	ruleSet.whitelistRegex = CombinedRegex(ruleSet.whitelist)
-	ruleSet.blacklistRegex = CombinedRegex(ruleSet.blacklist)
+	ruleSet.whitelistRegex = combinedRegex(ruleSet.whitelist)
+	ruleSet.blacklistRegex = combinedRegex(ruleSet.blacklist)
 
 	return ruleSet, nil
 }
 
-func CombinedRegex(rules []*ruleAdBlock) *regexp.Regexp {
-	regexes := []string{}
-	for _, rule := range rules {
-		regexes = append(regexes, rule.regexString)
+func combinedRegex(rules []*ruleAdBlock) *regexp.Regexp {
+	var b strings.Builder
+	for n, rule := range rules {
+		if n == 0 {
+			fmt.Fprintf(&b, "%s", rule.regex.String())
+			continue
+		}
+		fmt.Fprintf(&b, "|%s", rule.regex.String())
 	}
-	rs := strings.Join(regexes, "|")
-	if rs == "" {
+	if b.String() == "" {
 		return nil
 	}
-	return regexp.MustCompile(rs)
+	return regexp.MustCompile(b.String())
 }
 
 func parseDomainOption(text string) map[string]bool {

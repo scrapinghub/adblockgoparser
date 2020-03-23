@@ -2,35 +2,59 @@ package adblockgoparser
 
 import (
 	"net/url"
-	"os"
 	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
 
+func TestParsingCommentRule(t *testing.T) {
+	ruleText := "[Adblock Plus 2.0]"
+	_, err := ParseRule(ruleText)
+	assert.EqualError(t, err, "Commented rules are skipped")
+}
+
+func TestParsingHTMLRule(t *testing.T) {
+	ruleText := "###AdSense1"
+	_, err := ParseRule(ruleText)
+	assert.EqualError(t, err, "HTML rules are skipped")
+}
+
+func TestParsingBadOptionRule(t *testing.T) {
+	ruleText := "||domain.net^$badoption"
+	_, err := ParseRule(ruleText)
+	assert.EqualError(t, err, "Unsupported option rules are skipped")
+}
+
 func TestCommentRule(t *testing.T) {
 	ruleText := "[Adblock Plus 2.0]"
 	rules := []string{ruleText}
 	_, err := NewRuleSetFromStr(rules)
-	assert.NoError(t, err)
+	assert.EqualError(t, err, "Commented rules are skipped: [Adblock Plus 2.0]")
 
 	ruleText = "! Title: EasyList"
 	rules = []string{ruleText}
 	_, err = NewRuleSetFromStr(rules)
-	assert.NoError(t, err)
+	assert.EqualError(t, err, "Commented rules are skipped: ! Title: EasyList")
 }
 
 func TestHTMLRule(t *testing.T) {
 	ruleText := "###AdSense1"
 	rules := []string{ruleText}
 	_, err := NewRuleSetFromStr(rules)
-	assert.NoError(t, err)
+	assert.EqualError(t, err, "HTML rules are skipped: ###AdSense1")
 
 	ruleText = "statejournal.com#@##WNAd41"
 	rules = []string{ruleText}
 	_, err = NewRuleSetFromStr(rules)
-	assert.NoError(t, err)
+	assert.EqualError(t, err, "HTML rules are skipped: statejournal.com#@##WNAd41")
+}
+
+func TestBadOptionRule(t *testing.T) {
+	ruleText := "||domain.net^$badoption"
+	rules := []string{ruleText}
+	_, err := NewRuleSetFromStr(rules)
+	assert.EqualError(t, err, "Unsupported option rules are skipped: ||domain.net^$badoption")
 }
 
 func TestExceptionRule(t *testing.T) {
@@ -102,24 +126,17 @@ func TestNewRuleSetFromLongStr(t *testing.T) {
 }
 
 func TestNewRuleSetFromFile(t *testing.T) {
-	path := "easylist.txt"
-	// Create file
-	f, err := os.Create(path)
-	defer os.Remove(path)
-	defer f.Close()
-	data := []byte(`
-		[Adblock comment
-		!Other comment
-		anyhtmlrule.com#@##AdImage
-		/banner/*/img^
-		||ads.example.com^
-		|http://example.com/|
-		||domain.net^$badoption
-	`)
-	f.Write(data)
+	rules := []string{
+		// "[Adblock comment",
+		// "!Other comment",
+		// "anyhtmlrule.com#@##AdImage",
+		"/banner/*/img^",
+		"||ads.example.com^",
+		"|http://example.com/|",
+		// "||domain.net^$badoption",
+	}
 
-	// Load from file
-	ruleSet, err := NewRulesSetFromFile(path)
+	ruleSet, err := NewRuleSetFromStr(rules)
 	assert.NoError(t, err)
 
 	// First rule
@@ -144,22 +161,19 @@ func TestNewRuleSetFromFile(t *testing.T) {
 	assert.True(t, ruleSet.Allow(reqFromURL("http://example.info/redirect/http://example.com/")))
 
 	// Now add some exceptions
-	data = []byte(`
-		[Adblock comment
-		!Other comment
-		anyhtmlrule.com#@##AdImage
-		/banner/*/img^
-		||ads.example.com^
-		|http://example.com/|
-		||domain.net^$badoption
-		@@/banner/*/img^
-		@@||ads.example.com^
-		@@|http://example.com/|
-	`)
-	f.Write(data)
-
-	// Load from file
-	ruleSet, err = NewRulesSetFromFile(path)
+	rules = []string{
+		// "[Adblock comment",
+		// "!Other comment",
+		// "anyhtmlrule.com#@##AdImage",
+		"/banner/*/img^",
+		"||ads.example.com^",
+		"|http://example.com/|",
+		// "||domain.net^$badoption",
+		"@@/banner/*/img^",
+		"@@||ads.example.com^",
+		"@@|http://example.com/|",
+	}
+	ruleSet, err = NewRuleSetFromStr(rules)
 	assert.NoError(t, err)
 
 	// First rule
