@@ -167,6 +167,26 @@ func matchWhite(ruleSet RuleSet, req Request) bool {
 		return true
 	}
 
+	rulesIncluded := []*ruleAdBlock{}
+	for _, rule := range ruleSet.whitelistDomainsNoOptions {
+		include := true
+		matched := false
+		for domain, allowed := range rule.domains {
+			if strings.Contains(req.URL.Hostname(), domain) {
+				include = include && allowed
+				matched = true
+			}
+		}
+		if matched && include {
+			rulesIncluded = append(rulesIncluded, rule)
+		}
+	}
+
+	whitelistDomainsRegex := CombinedRegex(rulesIncluded)
+	if whitelistDomainsRegex != nil && whitelistDomainsRegex.MatchString(req.URL.String()) {
+		return true
+	}
+
 	options := extractOptionsFromRequest(req)
 	for option, active := range options {
 		if ruleSet.whitelistIncludeOptionsRegex[option] != nil && ruleSet.whitelistIncludeOptionsRegex[option].MatchString(req.URL.String()) {
