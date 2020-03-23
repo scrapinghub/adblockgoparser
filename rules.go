@@ -139,10 +139,14 @@ type RuleSet struct {
 	blacklist      []*ruleAdBlock
 	blacklistRegex *regexp.Regexp
 
+	whitelistDomainsNoOptions    []*ruleAdBlock
+	whitelistDomainsWithOptions  []*ruleAdBlock
 	whitelistIncludeDomains      map[string][]*ruleAdBlock
 	whitelistIncludeDomainsRegex map[string]*regexp.Regexp
 	whitelistExcludeDomains      map[string][]*ruleAdBlock
 	whitelistExcludeDomainsRegex map[string]*regexp.Regexp
+	blacklistDomainsNoOptions    []*ruleAdBlock
+	blacklistDomainsWithOptions  []*ruleAdBlock
 	blacklistIncludeDomains      map[string][]*ruleAdBlock
 	blacklistIncludeDomainsRegex map[string]*regexp.Regexp
 	blacklistExcludeDomains      map[string][]*ruleAdBlock
@@ -180,21 +184,24 @@ func matchBlack(ruleSet RuleSet, req Request) bool {
 		return true
 	}
 
-	disabledForDomain := false
-	for domain := range ruleSet.blacklistExcludeDomainsRegex {
-		disabledForDomain = strings.Contains(req.URL.Hostname(), domain)
-	}
-	didMatch := false
-	if !disabledForDomain {
-		for domain := range ruleSet.blacklistIncludeDomainsRegex {
-			lookForDomain := strings.Contains(req.URL.Hostname(), domain)
-			if lookForDomain &&
-				ruleSet.blacklistIncludeDomainsRegex[domain] != nil &&
-				ruleSet.blacklistIncludeDomainsRegex[domain].MatchString(req.URL.String()) {
-				fmt.Println("blacklistIncludeDomainsRegex", domain, "lookForDomain", lookForDomain, "didMatch", didMatch)
-				return true
+	rulesIncluded := []*ruleAdBlock{}
+	for _, rule := range ruleSet.blacklistDomainsNoOptions {
+		include := true
+		matched := false
+		for domain, allowed := range rule.domains {
+			if strings.Contains(req.URL.Hostname(), domain) {
+				include = include && allowed
+				matched = true
 			}
 		}
+		if matched && include {
+			rulesIncluded = append(rulesIncluded, rule)
+		}
+	}
+
+	blacklistDomainsRegex := CombinedRegex(rulesIncluded)
+	if blacklistDomainsRegex != nil && blacklistDomainsRegex.MatchString(req.URL.String()) {
+		return true
 	}
 
 	options := extractOptionsFromRequest(req)
@@ -277,40 +284,57 @@ func NewRuleSetFromStr(rulesStr []string) (*RuleSet, error) {
 		rule, err := parseRule(ruleStr)
 		switch {
 		case err == nil:
-			if len(rule.domains) > 0 && len(rule.options) == 0 {
-				for domain, allowed := range rule.domains {
+			// Blacklist without options nor domain filter
+			if !rule.isException && len(rule.domains) == 0 && len(rule.options) == 0 {
+				ruleSet.blacklist = append(ruleSet.blacklist, rule)
+				continue
+			}
+			// Whitelist without options nor domain filter
+			if rule.isException && len(rule.domains) == 0 && len(rule.options) == 0 {
+				ruleSet.whitelist = append(ruleSet.whitelist, rule)
+				continue
+			}
+			// Blacklist without options with domain filter
+			if !rule.isException && len(rule.domains) > 0 && len(rule.options) == 0 {
+				ruleSet.blacklistDomainsNoOptions = append(ruleSet.blacklistDomainsNoOptions, rule)
+				continue
+			}
+			// Whitelist without options with domain filter
+			if rule.isException && len(rule.domains) > 0 && len(rule.options) == 0 {
+				ruleSet.whitelistDomainsNoOptions = append(ruleSet.whitelistDomainsNoOptions, rule)
+				continue
+			}
+			// Blacklist with options with domain filter
+			if !rule.isException && len(rule.domains) > 0 && len(rule.options) >= 0 {
+				ruleSet.blacklistDomainsWithOptions = append(ruleSet.blacklistDomainsWithOptions, rule)
+				continue
+			}
+			// Whitelist with options with domain filter
+			if rule.isException && len(rule.domains) > 0 && len(rule.options) >= 0 {
+				ruleSet.whitelistDomainsWithOptions = append(ruleSet.whitelistDomainsWithOptions, rule)
+				continue
+			}
+			// Blacklist with options without domain filter
+			if !rule.isException && len(rule.domains) == 0 && len(rule.options) > 0 {
+				for option, allowed := range rule.options {
 					if allowed {
-						ruleSet.blacklistIncludeDomains[domain] = append(ruleSet.blacklistIncludeDomains[domain], rule)
+						ruleSet.blacklistIncludeOptions[option] = append(ruleSet.blacklistIncludeOptions[option], rule)
 					} else {
-						ruleSet.blacklistExcludeDomains[domain] = append(ruleSet.blacklistExcludeDomains[domain], rule)
+						ruleSet.blacklistExcludeOptions[option] = append(ruleSet.blacklistExcludeOptions[option], rule)
 					}
 				}
 				continue
 			}
-			if len(rule.options) > 0 {
-				if rule.isException {
-					for option, allowed := range rule.options {
-						if allowed {
-							ruleSet.whitelistIncludeOptions[option] = append(ruleSet.whitelistIncludeOptions[option], rule)
-						} else {
-							ruleSet.whitelistExcludeOptions[option] = append(ruleSet.whitelistExcludeOptions[option], rule)
-						}
-					}
-				} else {
-					for option, allowed := range rule.options {
-						if allowed {
-							ruleSet.blacklistIncludeOptions[option] = append(ruleSet.blacklistIncludeOptions[option], rule)
-						} else {
-							ruleSet.blacklistExcludeOptions[option] = append(ruleSet.blacklistExcludeOptions[option], rule)
-						}
+			// Whitelist with options without domain filter
+			if rule.isException && len(rule.domains) == 0 && len(rule.options) > 0 {
+				for option, allowed := range rule.options {
+					if allowed {
+						ruleSet.whitelistIncludeOptions[option] = append(ruleSet.whitelistIncludeOptions[option], rule)
+					} else {
+						ruleSet.whitelistExcludeOptions[option] = append(ruleSet.whitelistExcludeOptions[option], rule)
 					}
 				}
-			} else {
-				if rule.isException {
-					ruleSet.whitelist = append(ruleSet.whitelist, rule)
-				} else {
-					ruleSet.blacklist = append(ruleSet.blacklist, rule)
-				}
+				continue
 			}
 		case errors.Is(err, ErrSkipComment),
 			errors.Is(err, ErrSkipHTML),
