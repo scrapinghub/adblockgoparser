@@ -85,6 +85,7 @@ func CreateRoot() *Trie {
 	trie := &Trie{
 		parent:   nil,
 		isRoot:   true,
+		isLeaf:   true,
 		children: []*Trie{},
 	}
 	return trie

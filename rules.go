@@ -224,7 +224,7 @@ func (ruleSet *RuleSet) Allow(req Request) bool {
 	return true
 }
 
-func NewRuleSetFromStr(rulesStr []string) (*RuleSet, error) {
+func NewRuleSetFromList(rulesStr []string) (*RuleSet, error) {
 	ruleSet := &RuleSet{
 		whitelistTrie:           CreateRoot(),
 		blacklistTrie:           CreateRoot(),
@@ -233,7 +233,7 @@ func NewRuleSetFromStr(rulesStr []string) (*RuleSet, error) {
 		blacklistIncludeOptions: map[string][]*ruleAdBlock{},
 		blacklistExcludeOptions: map[string][]*ruleAdBlock{},
 	}
-	// fmt.Println("Rotao", ruleSet.blacklistTrie.String())
+
 	// Start parsing
 	for _, ruleStr := range rulesStr {
 		rule, err := ParseRule(ruleStr)
@@ -323,6 +323,7 @@ func NewRuleSetFromStr(rulesStr []string) (*RuleSet, error) {
 		}
 	}
 	ruleSet.blacklistTrie.compileAllLeafs()
+	ruleSet.whitelistTrie.compileAllLeafs()
 	return ruleSet, nil
 }
 
