@@ -99,6 +99,13 @@ func ParseRule(ruleText string) (*ruleAdBlock, error) {
 		}
 	}
 
+	if strings.HasPrefix(ruleText, "||") && strings.HasSuffix(ruleText, "^") {
+		domain := ruleText
+		domain = strings.TrimPrefix(domain, "||")
+		domain = strings.TrimSuffix(domain, "^")
+		rule.domains[domain] = true
+	}
+
 	re, err := regexp.Compile(ruleToRegexp(ruleText))
 	if err != nil {
 		return nil, ErrCompilingRegex

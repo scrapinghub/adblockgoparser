@@ -102,8 +102,6 @@ func NewChild(parent *Trie, part string, isLeaf bool) *Trie {
 }
 
 func (trie *Trie) hasChild(part string) (*Trie, bool) {
-	// fmt.Println("trie", trie)
-	// fmt.Println("trie.children", trie.children)
 	for _, child := range trie.children {
 		if child.part == part {
 			return child, true
