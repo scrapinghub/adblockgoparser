@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"path"
+	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -15,35 +15,13 @@ var (
 	ErrEmptyLine       = errors.New("Empty lines are skipped")
 	ErrUnsupportedRule = errors.New("Unsupported option rules are skipped")
 	ErrCompilingRegex  = errors.New("Error compiling regexp")
-	binaryOptions      = []string{
-		"document",
-		"domain",
-		"elemhide",
-		"font",
-		"genericblock",
-		"generichide",
-		"image",
-		"matchcase",
-		"media",
-		"object",
-		"other",
-		"ping",
-		"popup",
-		"script",
-		"stylesheet",
-		"subdocument",
-		"thirdparty",
-		"webrtc",
-		"websocket",
-		"xmlhttprequest",
-	}
 	// Except domain
 	supportedOptions = []string{
 		"image",
 		"script",
 		"stylesheet",
 		"font",
-		"thirdparty",
+		"third-party",
 		"xmlhttprequest",
 	}
 	supportedOptionsPat = func() map[string]struct{} {
@@ -442,17 +420,29 @@ func ruleToRegexp(text string) string {
 	return rule
 }
 
-func extractOptionsFromRequest(req Request) map[string]bool {
+func extractOptionsFromRequest(req *Request) map[string]bool {
 	result := make(map[string]bool, len(supportedOptions))
-
-	filename := path.Base(req.URL.Path)
-	result["script"] = regexp.MustCompile(`(?:\.js$|\.js\.gz$)`).MatchString(filename)
-	result["image"] = regexp.MustCompile(`(?:\.jpg$|\.jpeg$|\.png$|\.gif$|\.webp$|\.tiff$|\.psd$|\.raw$|\.bmp$|\.heif$|\.indd$|\.jpeg2000$)`).MatchString(filename)
-	result["stylesheet"] = regexp.MustCompile(`(?:\.css$)`).MatchString(filename)
-	// More font extension at https://fileinfo.com/filetypes/font
-	result["font"] = regexp.MustCompile(`(?:\.otf|\.ttf|\.fnt)`).MatchString(filename)
-	result["thirdparty"] = req.Referer != ""
 	result["xmlhttprequest"] = req.IsXHR
 
+	path := strings.ToLower(req.URL.Path)
+	if strings.HasSuffix(path, ".gz") {
+		path = path[:len(path)-len(".gz")]
+	}
+
+	switch filepath.Ext(path) {
+	case ".js":
+		result["script"] = true
+	case ".jpg", ".jpeg", ".png", ".gif", ".webp", ".tiff", ".psd", ".raw", ".bmp", ".heif", ".indd", ".jpeg2000":
+		result["image"] = true
+	case ".css":
+		result["stylesheet"] = true
+	case ".otf", ".ttf", ".fnt":
+		result["font"] = true
+	}
+
+	refererUrl, err := url.ParseRequestURI(req.Origin)
+	if err == nil {
+		result["third-party"] = refererUrl.Hostname() != req.URL.Hostname()
+	}
 	return result
 }

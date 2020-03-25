@@ -292,13 +292,13 @@ func TestExtractOptionsFromRequest(t *testing.T) {
 	reqUrl, _ := url.ParseRequestURI("http://example.com/banner/foo/file.js")
 	req := Request{
 		URL:     reqUrl,
-		Origin:  "",
-		Referer: "anything",
+		Origin:  "https://www.other.com",
+		Referer: "https://www.other.com/anything",
 		IsXHR:   false,
 	}
-	options := extractOptionsFromRequest(req)
+	options := extractOptionsFromRequest(&req)
 	assert.True(t, options["script"])
-	assert.True(t, options["thirdparty"])
+	assert.True(t, options["third-party"])
 	assert.False(t, options["image"])
 	assert.False(t, options["stylesheet"])
 	assert.False(t, options["font"])
