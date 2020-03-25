@@ -2,7 +2,6 @@ package adblockgoparser
 
 import (
 	"net/url"
-	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -81,25 +80,25 @@ func reqFromURL(rawURL string) Request {
 	return req
 }
 
-func TestNewRuleSetFromLongListWithWhitelist(t *testing.T) {
-	rulesStr := make([]string, 67000)
-	for i := range rulesStr {
-		rulesStr[i] = "/page/" + strconv.Itoa(i) + "/banner/*/img^"
-	}
-	// Make the last rule the correct one
-	rulesStr[len(rulesStr)-1] = "/banner/*/img^"
+// func TestNewRuleSetFromLongListWithWhitelist(t *testing.T) {
+// 	rulesStr := make([]string, 67000)
+// 	for i := range rulesStr {
+// 		rulesStr[i] = "/page/" + strconv.Itoa(i) + "/banner/*/img^"
+// 	}
+// 	// Make the last rule the correct one
+// 	rulesStr[len(rulesStr)-1] = "/banner/*/img^"
 
-	ruleSet, err := NewRuleSetFromList(rulesStr)
+// 	ruleSet, err := NewRuleSetFromList(rulesStr)
 
-	assert.NoError(t, err)
-	assert.False(t, ruleSet.Allow(reqFromURL("http://example.com/banner/foo/img")))
-	assert.False(t, ruleSet.Allow(reqFromURL("http://example.com/banner/foo/bar/img?param")))
-	assert.False(t, ruleSet.Allow(reqFromURL("http://example.com/banner//img/foo")))
-	assert.False(t, ruleSet.Allow(reqFromURL("http://example.com/banner/foo/img:8000")))
-	assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/banner/img")))
-	assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/banner/foo/imgraph")))
-	assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/banner/foo/img.gif")))
-}
+// 	assert.NoError(t, err)
+// 	assert.False(t, ruleSet.Allow(reqFromURL("http://example.com/banner/foo/img")))
+// 	assert.False(t, ruleSet.Allow(reqFromURL("http://example.com/banner/foo/bar/img?param")))
+// 	assert.False(t, ruleSet.Allow(reqFromURL("http://example.com/banner//img/foo")))
+// 	assert.False(t, ruleSet.Allow(reqFromURL("http://example.com/banner/foo/img:8000")))
+// 	assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/banner/img")))
+// 	assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/banner/foo/imgraph")))
+// 	assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/banner/foo/img.gif")))
+// }
 
 func TestNewRuleSetFromListWithWhitelist(t *testing.T) {
 	rules := []string{"/banner/*/img^", "||ads.example.com^", "|http://example.com/|"}
