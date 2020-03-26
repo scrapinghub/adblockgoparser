@@ -51,6 +51,7 @@ type ruleAdBlock struct {
 	options     map[string]bool
 	isException bool
 	domains     map[string]bool
+	domainRule  bool
 }
 
 func ParseRule(ruleText string) (*ruleAdBlock, error) {
@@ -104,6 +105,7 @@ func ParseRule(ruleText string) (*ruleAdBlock, error) {
 		domain = strings.TrimPrefix(domain, "||")
 		domain = strings.TrimSuffix(domain, "^")
 		rule.domains[domain] = true
+		rule.domainRule = true
 	}
 
 	re, err := regexp.Compile(ruleToRegexp(ruleText))
@@ -115,117 +117,62 @@ func ParseRule(ruleText string) (*ruleAdBlock, error) {
 }
 
 type RuleSet struct {
-	// whitelist      []*ruleAdBlock
-	// whitelistRegex *regexp.Regexp
-	// blacklist      []*ruleAdBlock
-	// blacklistRegex *regexp.Regexp
-
 	whitelistTrie *Trie
 	blacklistTrie *Trie
-
-	// whitelistDomainsNoOptions   []*ruleAdBlock
-	whitelistDomainsWithOptions []*ruleAdBlock
-	// blacklistDomainsNoOptions   []*ruleAdBlock
-	blacklistDomainsWithOptions []*ruleAdBlock
-
-	whitelistIncludeOptions map[string][]*ruleAdBlock
-	whitelistExcludeOptions map[string][]*ruleAdBlock
-	blacklistIncludeOptions map[string][]*ruleAdBlock
-	blacklistExcludeOptions map[string][]*ruleAdBlock
 }
 
-func matchWhite(ruleSet RuleSet, req Request) bool {
-	node := ruleSet.whitelistTrie
-	if node.includeRegex != nil && node.includeRegex.MatchString(req.URL.String()) {
-		return true
+func matchNode(isBlacklist bool, ruleSet *RuleSet, req Request) bool {
+	var root *Trie
+	if isBlacklist {
+		root = ruleSet.blacklistTrie
+	} else {
+		root = ruleSet.whitelistTrie
 	}
 
+	node := root
+	specificBlock := false
+	generalBlock := false
+	exists := false
+	matched := false
+	dInclude := false
+	dExclude := false
 	domain := req.URL.Hostname()
 	parts := strings.Split(domain, ".")
-
-	exists := false
-	block := false
-	for i := len(parts) - 1; i >= 0 && node != nil; i-- {
+	for i := len(parts) - 1; i >= 0; i-- {
 		node, exists = node.hasChild(parts[i])
-		if exists {
-			include := node.includeRegex != nil && node.includeRegex.MatchString(req.URL.String())
-			exclude := node.excludeRegex != nil && !node.excludeRegex.MatchString(req.URL.String())
-			block = include && !exclude
+		if !exists {
+			break
 		}
-	}
-	return block
-}
-
-func matchBlack(ruleSet RuleSet, req Request) bool {
-	node := ruleSet.blacklistTrie
-	if node.includeRegex != nil && node.includeRegex.MatchString(req.URL.String()) {
-		return true
-	}
-
-	domain := req.URL.Hostname()
-	parts := strings.Split(domain, ".")
-
-	exists := false
-	block := false
-	for i := len(parts) - 1; i >= 0 && node != nil; i-- {
-		node, exists = node.hasChild(parts[i])
-		if exists {
-			include := node.includeRegex != nil && node.includeRegex.MatchString(req.URL.String())
-			exclude := node.excludeRegex != nil && !node.excludeRegex.MatchString(req.URL.String())
-			block = include && !exclude
-		}
-	}
-	return block
-}
-
-func addRulesToOptions(rules []*ruleAdBlock, includeOptions map[string][]*ruleAdBlock, excludeOptions map[string][]*ruleAdBlock) (map[string]*regexp.Regexp, map[string]*regexp.Regexp) {
-	include := map[string][]*ruleAdBlock{}
-	exclude := map[string][]*ruleAdBlock{}
-
-	for _, rule := range rules {
-		for option, allowed := range rule.options {
-			if allowed {
-				include[option] = append(include[option], rule)
-			} else {
-				exclude[option] = append(exclude[option], rule)
-			}
+		if node.isLeaf {
+			aInclude := node.domainActivatedIncludeRegex != nil && node.domainActivatedIncludeRegex.MatchString(req.URL.String())
+			aExclude := node.domainActivatedExcludeRegex != nil && !node.domainActivatedExcludeRegex.MatchString(req.URL.String())
+			dInclude = node.domainDeactivatedIncludeRegex != nil && node.domainDeactivatedIncludeRegex.MatchString(req.URL.String())
+			dExclude = node.domainDeactivatedExcludeRegex != nil && !node.domainDeactivatedExcludeRegex.MatchString(req.URL.String())
+			matched = aInclude || aExclude
+			matched = aInclude || aExclude || dInclude || dExclude
+			specificBlock = aInclude || aExclude
 		}
 	}
 
-	// Append from rule with option but withour domains
-	for option, rule := range includeOptions {
-		include[option] = append(include[option], rule...)
-	}
-	for option, rule := range excludeOptions {
-		exclude[option] = append(exclude[option], rule...)
+	if matched {
+		return specificBlock
 	}
 
-	includeRegex := map[string]*regexp.Regexp{}
-	excludeRegex := map[string]*regexp.Regexp{}
-	var err error
-	for option, _ := range include {
-		includeRegex[option], err = combinedRegex(include[option])
-		if err != nil {
-			// ErrCompilingRegex
-		}
-
+	node = root
+	if node.noDomainIncludeRegex != nil && node.noDomainIncludeRegex.MatchString(req.URL.String()) {
+		generalBlock = true
 	}
-	for option, _ := range exclude {
-		excludeRegex[option], err = combinedRegex(exclude[option])
-		if err != nil {
-			// ErrCompilingRegex
-		}
-
+	if node.noDomainExcludeRegex != nil && !node.noDomainExcludeRegex.MatchString(req.URL.String()) {
+		generalBlock = true
 	}
-
-	return includeRegex, excludeRegex
+	return (matched && specificBlock) || (generalBlock && !(dInclude || dExclude))
 }
 
 func (ruleSet *RuleSet) Allow(req Request) bool {
-	if ok := matchWhite(*ruleSet, req); ok {
+	if ok := matchNode(false, ruleSet, req); ok {
 		return true
 	}
-	if ok := matchBlack(*ruleSet, req); ok {
+	if ok := matchNode(true, ruleSet, req); ok {
 		return false
 	}
 	return true
@@ -233,14 +180,11 @@ func (ruleSet *RuleSet) Allow(req Request) bool {
 
 func NewRuleSetFromList(rulesStr []string) (*RuleSet, error) {
 	ruleSet := &RuleSet{
-		whitelistTrie:           CreateRoot(),
-		blacklistTrie:           CreateRoot(),
-		whitelistIncludeOptions: map[string][]*ruleAdBlock{},
-		whitelistExcludeOptions: map[string][]*ruleAdBlock{},
-		blacklistIncludeOptions: map[string][]*ruleAdBlock{},
-		blacklistExcludeOptions: map[string][]*ruleAdBlock{},
+		whitelistTrie: CreateRoot(),
+		blacklistTrie: CreateRoot(),
 	}
-
+	rootWhitelistTrie := ruleSet.whitelistTrie
+	rootBlacklistTrie := ruleSet.blacklistTrie
 	// Start parsing
 	for _, ruleStr := range rulesStr {
 		rule, err := ParseRule(ruleStr)
@@ -248,76 +192,122 @@ func NewRuleSetFromList(rulesStr []string) (*RuleSet, error) {
 		case err == nil:
 			// Blacklist without options nor domain filter
 			if !rule.isException && len(rule.domains) == 0 && len(rule.options) == 0 {
-				ruleSet.blacklistTrie.include(rule.regex.String())
+				rootBlacklistTrie.include(rule.regex.String(), false, false)
 				continue
 			}
 			// Whitelist without options nor domain filter
 			if rule.isException && len(rule.domains) == 0 && len(rule.options) == 0 {
-				ruleSet.whitelistTrie.include(rule.regex.String())
+				rootWhitelistTrie.include(rule.regex.String(), false, false)
 				continue
 			}
 			// Blacklist without options with domain filter
 			if !rule.isException && len(rule.domains) > 0 && len(rule.options) == 0 {
+				hasAllowed := false
 				for domain, allowed := range rule.domains {
-					node := ruleSet.blacklistTrie
+					node := rootBlacklistTrie
 					parts := strings.Split(domain, ".")
 					for i := len(parts) - 1; i >= 0; i-- {
-						node = node.addChild(parts[i], i == 0)
+						node = node.addChild(parts[i])
+						isLeaf := i == 0
+						if !isLeaf {
+							continue
+						}
 						if allowed {
-							node.include(rule.regex.String())
+							hasAllowed = true
+							node.include(rule.regex.String(), true, allowed)
 						} else {
-							node.exclude(rule.regex.String())
+							node.exclude(rule.regex.String(), true, allowed)
 						}
 					}
+				}
+				if !hasAllowed {
+					addRegexpBasedOnOptions(rootBlacklistTrie, rule, false, false)
 				}
 				continue
 			}
 			// Whitelist without options with domain filter
 			if rule.isException && len(rule.domains) > 0 && len(rule.options) == 0 {
+				hasAllowed := false
 				for domain, allowed := range rule.domains {
-					node := ruleSet.whitelistTrie
+					node := rootWhitelistTrie
 					parts := strings.Split(domain, ".")
 					for i := len(parts) - 1; i >= 0; i-- {
-						node = node.addChild(parts[i], i == 0)
+						node = node.addChild(parts[i])
+						isLeaf := i == 0
+						if !isLeaf {
+							continue
+						}
 						if allowed {
-							node.include(rule.regex.String())
+							hasAllowed = true
+							node.include(rule.regex.String(), true, allowed)
 						} else {
-							node.exclude(rule.regex.String())
+							node.exclude(rule.regex.String(), true, allowed)
 						}
 					}
+				}
+				if !hasAllowed {
+					addRegexpBasedOnOptions(rootWhitelistTrie, rule, false, false)
 				}
 				continue
 			}
 			// Blacklist with options with domain filter
 			if !rule.isException && len(rule.domains) > 0 && len(rule.options) >= 0 {
-				ruleSet.blacklistDomainsWithOptions = append(ruleSet.blacklistDomainsWithOptions, rule)
+				hasAllowed := false
+				for domain, allowed := range rule.domains {
+					node := rootBlacklistTrie
+					parts := strings.Split(domain, ".")
+					for i := len(parts) - 1; i >= 0; i-- {
+						isLeaf := i == 0
+						node = node.addChild(parts[i])
+						if !isLeaf {
+							continue
+						}
+						if allowed {
+							hasAllowed = true
+							addRegexpBasedOnOptions(node, rule, true, allowed)
+						} else {
+							addRegexpBasedOnOptions(node, rule, true, allowed)
+						}
+					}
+				}
+				if !hasAllowed {
+					addRegexpBasedOnOptions(rootBlacklistTrie, rule, false, false)
+				}
 				continue
 			}
 			// Whitelist with options with domain filter
 			if rule.isException && len(rule.domains) > 0 && len(rule.options) >= 0 {
-				ruleSet.whitelistDomainsWithOptions = append(ruleSet.whitelistDomainsWithOptions, rule)
+				hasAllowed := false
+				for domain, allowed := range rule.domains {
+					node := rootWhitelistTrie
+					parts := strings.Split(domain, ".")
+					for i := len(parts) - 1; i >= 0; i-- {
+						isLeaf := i == 0
+						node = node.addChild(parts[i])
+						if !isLeaf {
+							continue
+						}
+						if allowed {
+							hasAllowed = true
+							addRegexpBasedOnOptions(node, rule, true, allowed)
+						} else {
+							addRegexpBasedOnOptions(node, rule, true, allowed)
+						}
+					}
+				}
+				if !hasAllowed {
+					addRegexpBasedOnOptions(rootBlacklistTrie, rule, false, false)
+				}
 				continue
 			}
 			// Blacklist with options without domain filter
 			if !rule.isException && len(rule.domains) == 0 && len(rule.options) > 0 {
-				for option, allowed := range rule.options {
-					if allowed {
-						ruleSet.blacklistIncludeOptions[option] = append(ruleSet.blacklistIncludeOptions[option], rule)
-					} else {
-						ruleSet.blacklistExcludeOptions[option] = append(ruleSet.blacklistExcludeOptions[option], rule)
-					}
-				}
+				addRegexpBasedOnOptions(rootBlacklistTrie, rule, false, false)
 				continue
 			}
 			// Whitelist with options without domain filter
 			if rule.isException && len(rule.domains) == 0 && len(rule.options) > 0 {
-				for option, allowed := range rule.options {
-					if allowed {
-						ruleSet.whitelistIncludeOptions[option] = append(ruleSet.whitelistIncludeOptions[option], rule)
-					} else {
-						ruleSet.whitelistExcludeOptions[option] = append(ruleSet.whitelistExcludeOptions[option], rule)
-					}
-				}
+				addRegexpBasedOnOptions(rootWhitelistTrie, rule, false, false)
 				continue
 			}
 		case errors.Is(err, ErrSkipComment),
@@ -329,9 +319,55 @@ func NewRuleSetFromList(rulesStr []string) (*RuleSet, error) {
 			return nil, fmt.Errorf("Cannot parse rule: %w", err)
 		}
 	}
-	ruleSet.blacklistTrie.compileAllLeafs()
-	ruleSet.whitelistTrie.compileAllLeafs()
+	rootBlacklistTrie.compileAllLeafs()
+	rootWhitelistTrie.compileAllLeafs()
 	return ruleSet, nil
+}
+
+func addRegexpBasedOnOptions(node *Trie, rule *ruleAdBlock, hasDomain bool, domainActivated bool) {
+	if rule.domainRule {
+		for option, optionInclude := range rule.options {
+			var regexpStr string
+			switch option {
+			case "xmlhttprequest":
+			case "script":
+				regexpStr = `(?:\.(?:js|js\.gz))$`
+			case "image":
+				regexpStr = `(?:\.(?:gif|jpe?g|png|webp|tiff|psd|raw|bmp|heif|indd|jpeg2000))$`
+			case "stylesheet":
+				regexpStr = `(?:\.css)$`
+			case "font":
+				regexpStr = `(?:\.(?:otf|ttf|fnt))$`
+			case "third-party":
+			}
+			if optionInclude {
+				node.include(regexpStr, hasDomain, domainActivated)
+			} else {
+				node.exclude(regexpStr, hasDomain, domainActivated)
+			}
+		}
+	} else {
+		for option, optionInclude := range rule.options {
+			var regexpStr string
+			switch option {
+			case "xmlhttprequest":
+			case "script":
+				regexpStr = rule.regex.String() + `(?:\.(?:js|js\.gz))$`
+			case "image":
+				regexpStr = rule.regex.String() + `(?:\.(?:gif|jpe?g|png|webp|tiff|psd|raw|bmp|heif|indd|jpeg2000))$`
+			case "stylesheet":
+				regexpStr = rule.regex.String() + `(?:\.css)$`
+			case "font":
+				regexpStr = rule.regex.String() + `(?:\.(?:otf|ttf|fnt))$`
+			case "third-party":
+			}
+			if optionInclude {
+				node.include(regexpStr, hasDomain, domainActivated)
+			} else {
+				node.exclude(regexpStr, hasDomain, domainActivated)
+			}
+		}
+	}
 }
 
 func combinedRegex(rules []*ruleAdBlock) (*regexp.Regexp, error) {

@@ -7,15 +7,23 @@ import (
 )
 
 type Trie struct {
-	isRoot       bool
-	isLeaf       bool
-	part         string
-	parent       *Trie
-	children     []*Trie
-	includeRules []string
-	includeRegex *regexp.Regexp
-	excludeRules []string
-	excludeRegex *regexp.Regexp
+	isRoot                        bool
+	isLeaf                        bool
+	part                          string
+	parent                        *Trie
+	children                      []*Trie
+	noDomainIncludeRules          []string
+	noDomainExcludeRules          []string
+	domainActivatedIncludeRules   []string
+	domainActivatedExcludeRules   []string
+	domainDeactivatedIncludeRules []string
+	domainDeactivatedExcludeRules []string
+	noDomainIncludeRegex          *regexp.Regexp
+	noDomainExcludeRegex          *regexp.Regexp
+	domainActivatedIncludeRegex   *regexp.Regexp
+	domainActivatedExcludeRegex   *regexp.Regexp
+	domainDeactivatedIncludeRegex *regexp.Regexp
+	domainDeactivatedExcludeRegex *regexp.Regexp
 }
 
 func (trie *Trie) String() string {
@@ -50,17 +58,41 @@ func combinedStringRegex(regexStringList []string) (*regexp.Regexp, error) {
 
 func (trie *Trie) compileRegex() error {
 	if trie.isLeaf {
-		re, err := combinedStringRegex(trie.includeRules)
+		re, err := combinedStringRegex(trie.noDomainIncludeRules)
 		if err != nil {
 			return ErrCompilingRegex
 		}
-		trie.includeRegex = re
+		trie.noDomainIncludeRegex = re
 
-		re, err = combinedStringRegex(trie.excludeRules)
+		re, err = combinedStringRegex(trie.noDomainExcludeRules)
 		if err != nil {
 			return ErrCompilingRegex
 		}
-		trie.excludeRegex = re
+		trie.noDomainExcludeRegex = re
+
+		re, err = combinedStringRegex(trie.domainActivatedIncludeRules)
+		if err != nil {
+			return ErrCompilingRegex
+		}
+		trie.domainActivatedIncludeRegex = re
+
+		re, err = combinedStringRegex(trie.domainActivatedExcludeRules)
+		if err != nil {
+			return ErrCompilingRegex
+		}
+		trie.domainActivatedExcludeRegex = re
+
+		re, err = combinedStringRegex(trie.domainDeactivatedIncludeRules)
+		if err != nil {
+			return ErrCompilingRegex
+		}
+		trie.domainDeactivatedIncludeRegex = re
+
+		re, err = combinedStringRegex(trie.domainDeactivatedExcludeRules)
+		if err != nil {
+			return ErrCompilingRegex
+		}
+		trie.domainDeactivatedExcludeRegex = re
 	}
 	return nil
 }
@@ -91,12 +123,11 @@ func CreateRoot() *Trie {
 	return trie
 }
 
-func NewChild(parent *Trie, part string, isLeaf bool) *Trie {
+func NewChild(parent *Trie, part string) *Trie {
 	trie := &Trie{
 		parent:   parent,
 		part:     part,
 		children: []*Trie{},
-		isLeaf:   isLeaf,
 	}
 	return trie
 }
@@ -110,19 +141,37 @@ func (trie *Trie) hasChild(part string) (*Trie, bool) {
 	return nil, false
 }
 
-func (parent *Trie) addChild(part string, isLeaf bool) *Trie {
+func (parent *Trie) addChild(part string) *Trie {
 	child, exists := parent.hasChild(part)
 	if !exists {
-		child = NewChild(parent, part, isLeaf)
+		child = NewChild(parent, part)
 		parent.children = append(parent.children, child)
 	}
 	return child
 }
 
-func (trie *Trie) include(regexString string) {
-	trie.includeRules = append(trie.includeRules, regexString)
+func (trie *Trie) include(regexString string, hasDomain bool, domainActivated bool) {
+	trie.isLeaf = true
+	if !hasDomain {
+		trie.noDomainIncludeRules = append(trie.noDomainIncludeRules, regexString)
+		return
+	}
+	if domainActivated {
+		trie.domainActivatedIncludeRules = append(trie.domainActivatedIncludeRules, regexString)
+		return
+	}
+	trie.domainDeactivatedIncludeRules = append(trie.domainDeactivatedIncludeRules, regexString)
 }
 
-func (trie *Trie) exclude(regexString string) {
-	trie.excludeRules = append(trie.excludeRules, regexString)
+func (trie *Trie) exclude(regexString string, hasDomain bool, domainActivated bool) {
+	trie.isLeaf = true
+	if !hasDomain {
+		trie.noDomainExcludeRules = append(trie.noDomainExcludeRules, regexString)
+		return
+	}
+	if domainActivated {
+		trie.domainActivatedExcludeRules = append(trie.domainActivatedExcludeRules, regexString)
+		return
+	}
+	trie.domainDeactivatedExcludeRules = append(trie.domainDeactivatedExcludeRules, regexString)
 }
