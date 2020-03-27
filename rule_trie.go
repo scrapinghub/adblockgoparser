@@ -66,13 +66,10 @@ func (root *Trie) Match(req Request) bool {
 	}
 
 	node = root
-	if node.noDomainIncludeRegex != nil && node.noDomainIncludeRegex.MatchString(req.URL.String()) {
-		generalBlock = true
-	}
-	if node.noDomainExcludeRegex != nil && !node.noDomainExcludeRegex.MatchString(req.URL.String()) {
-		generalBlock = true
-	}
-	return (matched && specificBlock) || (generalBlock && !(dInclude || dExclude))
+	nInclude := node.noDomainIncludeRegex != nil && node.noDomainIncludeRegex.MatchString(req.URL.String())
+	nExclude := node.noDomainExcludeRegex != nil && !node.noDomainExcludeRegex.MatchString(req.URL.String())
+	generalBlock = nInclude || nExclude
+	return generalBlock
 }
 
 func combinedStringRegex(regexStringList []string) (*regexp.Regexp, error) {

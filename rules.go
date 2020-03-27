@@ -168,7 +168,7 @@ func NewRuleSetFromList(rulesStr []string) (*RuleSet, error) {
 					}
 				}
 				if !hasAllowed {
-					addRegexpBasedOnOptions(rootBlacklistTrie, rule, false, false)
+					rootBlacklistTrie.exclude(rule.regex.String(), false, false)
 				}
 				continue
 			}
@@ -193,7 +193,7 @@ func NewRuleSetFromList(rulesStr []string) (*RuleSet, error) {
 					}
 				}
 				if !hasAllowed {
-					addRegexpBasedOnOptions(rootWhitelistTrie, rule, false, false)
+					rootWhitelistTrie.exclude(rule.regex.String(), false, false)
 				}
 				continue
 			}
