@@ -299,6 +299,42 @@ func TestRuleSetN6(t *testing.T) {
 	assert.True(t, ruleSet.Allow(reqFromURL("http://ads.other.com/banner/foo/file.css")))
 	assert.False(t, ruleSet.Allow(reqFromURL("http://ads.other.com/banner/foo/file.js")))
 }
+func TestRuleSetN7(t *testing.T) {
+	rules := []string{"*$domain=example.com"}
+	ruleSet, err := NewRuleSetFromList(rules)
+	assert.NoError(t, err)
+	assert.False(t, ruleSet.Allow(reqFromURL("http://ads.example.com/banner/foo/file.css")))
+	assert.False(t, ruleSet.Allow(reqFromURL("http://ads.example.com/banner/foo/file.js")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://ads.other.com/banner/foo/file.css")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://ads.other.com/banner/foo/file.js")))
+}
+func TestRuleSetN8(t *testing.T) {
+	rules := []string{"*$domain=~example.com"}
+	ruleSet, err := NewRuleSetFromList(rules)
+	assert.NoError(t, err)
+	assert.True(t, ruleSet.Allow(reqFromURL("http://ads.example.com/banner/foo/file.css")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://ads.example.com/banner/foo/file.js")))
+	assert.False(t, ruleSet.Allow(reqFromURL("http://ads.other.com/banner/foo/file.css")))
+	assert.False(t, ruleSet.Allow(reqFromURL("http://ads.other.com/banner/foo/file.js")))
+}
+func TestRuleSetN9(t *testing.T) {
+	rules := []string{"*$stylesheet"}
+	ruleSet, err := NewRuleSetFromList(rules)
+	assert.NoError(t, err)
+	assert.False(t, ruleSet.Allow(reqFromURL("http://ads.example.com/banner/foo/file.css")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://ads.example.com/banner/foo/file.js")))
+	assert.False(t, ruleSet.Allow(reqFromURL("http://ads.other.com/banner/foo/file.css")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://ads.other.com/banner/foo/file.js")))
+}
+func TestRuleSetN10(t *testing.T) {
+	rules := []string{"*$~stylesheet"}
+	ruleSet, err := NewRuleSetFromList(rules)
+	assert.NoError(t, err)
+	assert.True(t, ruleSet.Allow(reqFromURL("http://ads.example.com/banner/foo/file.css")))
+	assert.False(t, ruleSet.Allow(reqFromURL("http://ads.example.com/banner/foo/file.js")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://ads.other.com/banner/foo/file.css")))
+	assert.False(t, ruleSet.Allow(reqFromURL("http://ads.other.com/banner/foo/file.js")))
+}
 
 func TestExtractOptionsFromRequest(t *testing.T) {
 	reqUrl, _ := url.ParseRequestURI("http://example.com/banner/foo/file.js")
