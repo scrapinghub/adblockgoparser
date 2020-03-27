@@ -68,7 +68,7 @@ func ParseRule(ruleText string) (*ruleAdBlock, error) {
 		return nil, ErrSkipComment
 	}
 
-	if strings.Contains(ruleText, "##") || strings.Contains(ruleText, "#@#") {
+	if strings.Contains(ruleText, "##") || strings.Contains(ruleText, "#@#") || strings.Contains(ruleText, "#?#") {
 		return nil, ErrSkipHTML
 	}
 
@@ -79,23 +79,23 @@ func ParseRule(ruleText string) (*ruleAdBlock, error) {
 
 	if strings.Contains(ruleText, "$") {
 		parts := strings.SplitN(ruleText, "$", 2)
-		length := len(parts)
+		ruleText = parts[0]
 
-		if length > 0 {
-			ruleText = parts[0]
-		}
+		for _, option := range strings.Split(parts[1], ",") {
+			optionNegative := !strings.HasPrefix(option, "~")
+			option = strings.TrimPrefix(option, "~")
+			_, supportedOption := supportedOptionsPat[option]
 
-		if length > 1 {
-			for _, option := range strings.Split(parts[1], ",") {
-				if strings.HasPrefix(option, "domain=") {
-					rule.domains = parseDomainOption(option)
-				} else {
-					optionName := strings.TrimPrefix(option, "~")
-					if _, ok := supportedOptionsPat[optionName]; !ok {
-						return nil, ErrUnsupportedRule
-					}
-					rule.options[optionName] = !strings.HasPrefix(option, "~")
+			switch {
+			case strings.HasPrefix(option, "domain="):
+				for _, domain := range strings.Split(option[len("domain="):], "|") {
+					name := strings.TrimSpace(domain)
+					rule.domains[strings.TrimPrefix(name, "~")] = !strings.HasPrefix(name, "~")
 				}
+			case !supportedOption:
+				return nil, ErrUnsupportedRule
+			default:
+				rule.options[option] = optionNegative
 			}
 		}
 	}
@@ -121,61 +121,8 @@ type RuleSet struct {
 	blacklistTrie *Trie
 }
 
-func matchNode(isBlacklist bool, ruleSet *RuleSet, req Request) bool {
-	var root *Trie
-	if isBlacklist {
-		root = ruleSet.blacklistTrie
-	} else {
-		root = ruleSet.whitelistTrie
-	}
-
-	node := root
-	specificBlock := false
-	generalBlock := false
-	exists := false
-	matched := false
-	dInclude := false
-	dExclude := false
-	domain := req.URL.Hostname()
-	parts := strings.Split(domain, ".")
-	for i := len(parts) - 1; i >= 0; i-- {
-		node, exists = node.hasChild(parts[i])
-		if !exists {
-			break
-		}
-		if node.isLeaf {
-			aInclude := node.domainActivatedIncludeRegex != nil && node.domainActivatedIncludeRegex.MatchString(req.URL.String())
-			aExclude := node.domainActivatedExcludeRegex != nil && !node.domainActivatedExcludeRegex.MatchString(req.URL.String())
-			dInclude = node.domainDeactivatedIncludeRegex != nil && node.domainDeactivatedIncludeRegex.MatchString(req.URL.String())
-			dExclude = node.domainDeactivatedExcludeRegex != nil && !node.domainDeactivatedExcludeRegex.MatchString(req.URL.String())
-			matched = aInclude || aExclude
-			matched = aInclude || aExclude || dInclude || dExclude
-			specificBlock = aInclude || aExclude
-		}
-	}
-
-	if matched {
-		return specificBlock
-	}
-
-	node = root
-	if node.noDomainIncludeRegex != nil && node.noDomainIncludeRegex.MatchString(req.URL.String()) {
-		generalBlock = true
-	}
-	if node.noDomainExcludeRegex != nil && !node.noDomainExcludeRegex.MatchString(req.URL.String()) {
-		generalBlock = true
-	}
-	return (matched && specificBlock) || (generalBlock && !(dInclude || dExclude))
-}
-
 func (ruleSet *RuleSet) Allow(req Request) bool {
-	if ok := matchNode(false, ruleSet, req); ok {
-		return true
-	}
-	if ok := matchNode(true, ruleSet, req); ok {
-		return false
-	}
-	return true
+	return ruleSet.whitelistTrie.Match(req) || !ruleSet.blacklistTrie.Match(req)
 }
 
 func NewRuleSetFromList(rulesStr []string) (*RuleSet, error) {
@@ -368,39 +315,6 @@ func addRegexpBasedOnOptions(node *Trie, rule *ruleAdBlock, hasDomain bool, doma
 			}
 		}
 	}
-}
-
-func combinedRegex(rules []*ruleAdBlock) (*regexp.Regexp, error) {
-	var b strings.Builder
-	for n, rule := range rules {
-		if n == 0 {
-			fmt.Fprintf(&b, "%s", rule.regex.String())
-			continue
-		}
-		fmt.Fprintf(&b, "|%s", rule.regex.String())
-	}
-	if b.String() == "" {
-		return nil, nil
-	}
-
-	re, err := regexp.Compile(b.String())
-	if err != nil {
-		return nil, ErrCompilingRegex
-	}
-	return re, nil
-
-}
-
-func parseDomainOption(text string) map[string]bool {
-	domains := text[len("domain="):]
-	parts := strings.Split(domains, "|")
-	opts := make(map[string]bool, len(parts))
-
-	for _, part := range parts {
-		opts[strings.TrimPrefix(part, "~")] = !strings.HasPrefix(part, "~")
-	}
-
-	return opts
 }
 
 func ruleToRegexp(text string) string {

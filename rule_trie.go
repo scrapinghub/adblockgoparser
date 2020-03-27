@@ -36,6 +36,46 @@ func (trie *Trie) String() string {
 	return fmt.Sprintf("%s", trie.part)
 }
 
+func (root *Trie) Match(req Request) bool {
+	node := root
+	specificBlock := false
+	generalBlock := false
+	exists := false
+	matched := false
+	dInclude := false
+	dExclude := false
+	domain := req.URL.Hostname()
+	parts := strings.Split(domain, ".")
+	for i := len(parts) - 1; i >= 0; i-- {
+		node, exists = node.hasChild(parts[i])
+		if !exists {
+			break
+		}
+		if node.isLeaf {
+			aInclude := node.domainActivatedIncludeRegex != nil && node.domainActivatedIncludeRegex.MatchString(req.URL.String())
+			aExclude := node.domainActivatedExcludeRegex != nil && !node.domainActivatedExcludeRegex.MatchString(req.URL.String())
+			dInclude = node.domainDeactivatedIncludeRegex != nil && node.domainDeactivatedIncludeRegex.MatchString(req.URL.String())
+			dExclude = node.domainDeactivatedExcludeRegex != nil && !node.domainDeactivatedExcludeRegex.MatchString(req.URL.String())
+			matched = aInclude || aExclude
+			matched = aInclude || aExclude || dInclude || dExclude
+			specificBlock = aInclude || aExclude
+		}
+	}
+
+	if matched {
+		return specificBlock
+	}
+
+	node = root
+	if node.noDomainIncludeRegex != nil && node.noDomainIncludeRegex.MatchString(req.URL.String()) {
+		generalBlock = true
+	}
+	if node.noDomainExcludeRegex != nil && !node.noDomainExcludeRegex.MatchString(req.URL.String()) {
+		generalBlock = true
+	}
+	return (matched && specificBlock) || (generalBlock && !(dInclude || dExclude))
+}
+
 func combinedStringRegex(regexStringList []string) (*regexp.Regexp, error) {
 	var sb strings.Builder
 	for n, str := range regexStringList {

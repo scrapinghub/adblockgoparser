@@ -47,6 +47,11 @@ func TestHTMLRule(t *testing.T) {
 	rules = []string{ruleText}
 	_, err = NewRuleSetFromList(rules)
 	assert.EqualError(t, err, "HTML rules are skipped: statejournal.com#@##WNAd41")
+
+	ruleText = "mobile.twitter.com#?#.tweet:-abp-has(.promo)"
+	rules = []string{ruleText}
+	_, err = NewRuleSetFromList(rules)
+	assert.EqualError(t, err, "HTML rules are skipped: mobile.twitter.com#?#.tweet:-abp-has(.promo)")
 }
 
 func TestBadOptionRule(t *testing.T) {
