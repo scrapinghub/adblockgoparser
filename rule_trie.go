@@ -56,7 +56,6 @@ func (root *Trie) Match(req Request) bool {
 			aExclude := node.domainActivatedExcludeRegex != nil && !node.domainActivatedExcludeRegex.MatchString(req.URL.String())
 			dInclude = node.domainDeactivatedIncludeRegex != nil && node.domainDeactivatedIncludeRegex.MatchString(req.URL.String())
 			dExclude = node.domainDeactivatedExcludeRegex != nil && !node.domainDeactivatedExcludeRegex.MatchString(req.URL.String())
-			matched = aInclude || aExclude
 			matched = aInclude || aExclude || dInclude || dExclude
 			specificBlock = aInclude || aExclude
 		}
