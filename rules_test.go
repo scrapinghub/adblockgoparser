@@ -335,20 +335,3 @@ func TestRuleSetN10(t *testing.T) {
 	assert.True(t, ruleSet.Allow(reqFromURL("http://ads.other.com/banner/foo/file.css")))
 	assert.False(t, ruleSet.Allow(reqFromURL("http://ads.other.com/banner/foo/file.js")))
 }
-
-func TestExtractOptionsFromRequest(t *testing.T) {
-	reqUrl, _ := url.ParseRequestURI("http://example.com/banner/foo/file.js")
-	req := Request{
-		URL:     reqUrl,
-		Origin:  "https://www.other.com",
-		Referer: "https://www.other.com/anything",
-		IsXHR:   false,
-	}
-	options := extractOptionsFromRequest(&req)
-	assert.True(t, options["script"])
-	assert.True(t, options["third-party"])
-	assert.False(t, options["image"])
-	assert.False(t, options["stylesheet"])
-	assert.False(t, options["font"])
-	assert.False(t, options["xmlhttprequest"])
-}
