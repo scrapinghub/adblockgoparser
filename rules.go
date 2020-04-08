@@ -22,6 +22,7 @@ var (
 		"font",
 		"third-party",
 		"xmlhttprequest",
+		"match-case",
 	}
 	supportedOptionsPat = func() map[string]struct{} {
 		rv := map[string]struct{}{}
@@ -116,7 +117,7 @@ func ParseRule(ruleText string) (*ruleAdBlock, error) {
 		rule.ruleType = exactAddress
 	}
 
-	re, err := regexp.Compile(ruleToRegexp(rule.ruleText))
+	re, err := regexp.Compile(ruleToRegexp(rule))
 	if err != nil {
 		return nil, ErrCompilingRegex
 	}
@@ -181,7 +182,8 @@ func NewRuleSetFromList(rulesStr []string) (*RuleSet, error) {
 	return ruleSet, nil
 }
 
-func ruleToRegexp(text string) string {
+func ruleToRegexp(r *ruleAdBlock) string {
+	text := r.ruleText
 	// Convert AdBlock rule to a regular expression.
 	if text == "" {
 		return ".*"
@@ -234,6 +236,11 @@ func ruleToRegexp(text string) string {
 	} else if rule[0] == '|' {
 		// | in the beginning means start of the address
 		rule = "^" + rule[1:]
+	}
+
+	// If rule is case insensitive, use it on regex
+	if _, ok := r.options["match-case"]; !ok {
+		rule = "(?i)" + rule
 	}
 
 	// other | symbols should be escaped

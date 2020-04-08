@@ -18,15 +18,16 @@ type PathMatcher struct {
 
 func (matcher *Matcher) add(rule *ruleAdBlock) {
 	var runes []rune
+	text := strings.ToLower(rule.ruleText)
 	switch rule.ruleType {
 	case addressPart:
-		runes = []rune(rule.ruleText)
+		runes = []rune(text)
 		matcher.addressPartMatcher.addPath(runes, rule)
 	case domainName:
-		runes = []rune(rule.ruleText[2 : len(rule.ruleText)-1])
+		runes = []rune(text[2 : len(text)-1])
 		matcher.domainNameMatcher.addPath(runes, rule)
 	case exactAddress:
-		runes = []rune(rule.ruleText[1 : len(rule.ruleText)-1])
+		runes = []rune(text[1 : len(text)-1])
 		matcher.exactAddressMatcher.addPath(runes, rule)
 	}
 }
@@ -48,7 +49,7 @@ func (pathMatcher *PathMatcher) addPath(runes []rune, rule *ruleAdBlock) {
 
 func (matcher *Matcher) Match(req *Request) bool {
 	// Match path
-	pathRunes := []rune(req.URL.Path)
+	pathRunes := []rune(strings.ToLower(req.URL.Path))
 	for i := range pathRunes {
 		if matcher.addressPartMatcher.findNext(pathRunes[i:], req) {
 			return true
@@ -56,7 +57,7 @@ func (matcher *Matcher) Match(req *Request) bool {
 	}
 
 	// Match domain and subdomains
-	hnRunes := []rune(req.URL.Hostname())
+	hnRunes := []rune(strings.ToLower(req.URL.Hostname()))
 	for i := range hnRunes {
 		if matcher.domainNameMatcher.findNext(hnRunes[i:], req) {
 			return true
@@ -64,7 +65,7 @@ func (matcher *Matcher) Match(req *Request) bool {
 	}
 
 	// Match exact address
-	uriRunes := []rune(req.URL.String())
+	uriRunes := []rune(strings.ToLower(req.URL.String()))
 	return matcher.exactAddressMatcher.findNext(uriRunes, req)
 }
 
@@ -102,7 +103,11 @@ func (pathMatcher *PathMatcher) findNext(runes []rune, req *Request) bool {
 
 func matchDomains(rule *ruleAdBlock, req *Request) bool {
 	allowedDomain := true
-	hostname := strings.ToLower(req.URL.Hostname())
+	matchCase := false
+	hostname := req.URL.Hostname()
+	if _, matchCase = rule.options["match-case"]; !matchCase {
+		hostname = strings.ToLower(hostname)
+	}
 	if rule.ruleType == domainName {
 		if !strings.HasSuffix(hostname, rule.ruleText[2:len(rule.ruleText)-1]) {
 			allowedDomain = false
@@ -110,6 +115,9 @@ func matchDomains(rule *ruleAdBlock, req *Request) bool {
 	}
 	if len(rule.domains) > 0 {
 		for domain, active := range rule.domains {
+			if !matchCase {
+				domain = strings.ToLower(domain)
+			}
 			if !(strings.HasSuffix(hostname, domain) == active) {
 				allowedDomain = false
 				break
@@ -118,45 +126,49 @@ func matchDomains(rule *ruleAdBlock, req *Request) bool {
 	}
 	return allowedDomain
 }
+
 func matchOptions(rule *ruleAdBlock, req *Request) bool {
 	matchOption := true
 	path := strings.ToLower(req.URL.Path)
 	if strings.HasSuffix(path, ".gz") {
 		path = path[:len(path)-len(".gz")]
 	}
+
 	if len(rule.options) > 0 {
 		matchOption = false
 		for option, active := range rule.options {
 			switch {
 			case option == "xmlhttprequest":
 			case option == "third-party":
+			case option == "match-case":
+				matchOption = true
 			case option == "script":
 				switch filepath.Ext(path) {
 				case ".js":
-					matchOption = matchOption || active
+					return active
 				default:
-					matchOption = matchOption || !active
+					return !active
 				}
 			case option == "image":
 				switch filepath.Ext(path) {
 				case ".jpg", ".jpeg", ".png", ".gif", ".webp", ".tiff", ".psd", ".raw", ".bmp", ".heif", ".indd", ".jpeg2000":
-					matchOption = matchOption || active
+					return active
 				default:
-					matchOption = matchOption || !active
+					return !active
 				}
 			case option == "stylesheet":
 				switch filepath.Ext(path) {
 				case ".css":
-					matchOption = matchOption || active
+					return active
 				default:
-					matchOption = matchOption || !active
+					return !active
 				}
 			case option == "font":
 				switch filepath.Ext(path) {
 				case ".otf", ".ttf", ".fnt":
-					matchOption = matchOption || active
+					return active
 				default:
-					matchOption = matchOption || !active
+					return !active
 				}
 			}
 		}

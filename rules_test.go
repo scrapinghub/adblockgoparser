@@ -81,65 +81,122 @@ func reqFromURL(rawURL string) *Request {
 	return req
 }
 
+func TestMatchCasePath(t *testing.T) {
+	rules := []string{"/banner/*/img^$match-case"}
+
+	ruleSet, err := NewRuleSetFromList(rules)
+	assert.NoError(t, err)
+
+	assert.False(t, ruleSet.Allow(reqFromURL("http://example.com/banner/foo/img")))
+	assert.False(t, ruleSet.Allow(reqFromURL("http://example.com/banner/foo/bar/img?param")))
+	assert.False(t, ruleSet.Allow(reqFromURL("http://example.com/banner//img/foo")))
+	assert.False(t, ruleSet.Allow(reqFromURL("http://example.com/banner/foo/img:8000")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/banner/img")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/banner/foo/imgraph")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/banner/foo/img.gif")))
+
+	assert.True(t, ruleSet.Allow(reqFromURL("HTTP://EXAMPLE.COM/BANNER/FOO/IMG")))
+	assert.True(t, ruleSet.Allow(reqFromURL("HTTP://EXAMPLE.COM/BANNER/FOO/BAR/IMG?PARAM")))
+	assert.True(t, ruleSet.Allow(reqFromURL("HTTP://EXAMPLE.COM/BANNER//IMG/FOO")))
+	assert.True(t, ruleSet.Allow(reqFromURL("HTTP://EXAMPLE.COM/BANNER/FOO/IMG:8000")))
+	assert.True(t, ruleSet.Allow(reqFromURL("HTTP://EXAMPLE.COM/BANNER/IMG")))
+	assert.True(t, ruleSet.Allow(reqFromURL("HTTP://EXAMPLE.COM/BANNER/FOO/IMGRAPH")))
+	assert.True(t, ruleSet.Allow(reqFromURL("HTTP://EXAMPLE.COM/BANNER/FOO/IMG.GIF")))
+}
+
+func TestMatchCaseDomain(t *testing.T) {
+	rules := []string{"||ads.example.com^$match-case"}
+
+	ruleSet, err := NewRuleSetFromList(rules)
+	assert.NoError(t, err)
+
+	assert.False(t, ruleSet.Allow(reqFromURL("http://ads.example.com/foo.gif")))
+	assert.False(t, ruleSet.Allow(reqFromURL("http://server1.ads.example.com/foo.gif")))
+	assert.False(t, ruleSet.Allow(reqFromURL("https://ads.example.com:8000/")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://ads.example.com.ua/foo.gif")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/redirect/http://ads.example.com/")))
+
+	assert.True(t, ruleSet.Allow(reqFromURL("HTTP://ADS.EXAMPLE.COM/FOO.GIF")))
+	assert.True(t, ruleSet.Allow(reqFromURL("HTTP://SERVER1.ADS.EXAMPLE.COM/FOO.GIF")))
+	assert.True(t, ruleSet.Allow(reqFromURL("HTTPS://ADS.EXAMPLE.COM:8000/")))
+	assert.True(t, ruleSet.Allow(reqFromURL("HTTP://ADS.EXAMPLE.COM.UA/FOO.GIF")))
+	assert.True(t, ruleSet.Allow(reqFromURL("HTTP://EXAMPLE.COM/REDIRECT/HTTP://ADS.EXAMPLE.COM/")))
+}
+
+func TestMatchCaseExact(t *testing.T) {
+	rules := []string{"|http://example.com/|$match-case"}
+
+	ruleSet, err := NewRuleSetFromList(rules)
+	assert.NoError(t, err)
+
+	assert.False(t, ruleSet.Allow(reqFromURL("http://example.com/")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/foo.gif")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://example.info/redirect/http://example.com/")))
+
+	assert.True(t, ruleSet.Allow(reqFromURL("HTTP://EXAMPLE.COM/")))
+	assert.True(t, ruleSet.Allow(reqFromURL("HTTP://EXAMPLE.COM/FOO.GIF")))
+	assert.True(t, ruleSet.Allow(reqFromURL("HTTP://EXAMPLE.INFO/REDIRECT/HTTP://EXAMPLE.COM/")))
+}
+
 func TestNewRuleSetFromListWithWhitelist(t *testing.T) {
 	rules := []string{"/banner/*/img^", "||ads.example.com^", "|http://example.com/|"}
 
 	ruleSet, err := NewRuleSetFromList(rules)
 	assert.NoError(t, err)
 
-	// // First rule
-	// assert.False(t, ruleSet.Allow(reqFromURL("http://example.com/banner/foo/img")))
-	// assert.False(t, ruleSet.Allow(reqFromURL("http://example.com/banner/foo/bar/img?param")))
-	// assert.False(t, ruleSet.Allow(reqFromURL("http://example.com/banner//img/foo")))
-	// assert.False(t, ruleSet.Allow(reqFromURL("http://example.com/banner/foo/img:8000")))
-	// assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/banner/img")))
-	// assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/banner/foo/imgraph")))
-	// assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/banner/foo/img.gif")))
+	// First rule
+	assert.False(t, ruleSet.Allow(reqFromURL("http://example.com/banner/foo/img")))
+	assert.False(t, ruleSet.Allow(reqFromURL("http://example.com/banner/foo/bar/img?param")))
+	assert.False(t, ruleSet.Allow(reqFromURL("http://example.com/banner//img/foo")))
+	assert.False(t, ruleSet.Allow(reqFromURL("http://example.com/banner/foo/img:8000")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/banner/img")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/banner/foo/imgraph")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/banner/foo/img.gif")))
 
 	// Second rule
 	assert.False(t, ruleSet.Allow(reqFromURL("http://ads.example.com/foo.gif")))
-	// assert.False(t, ruleSet.Allow(reqFromURL("http://server1.ads.example.com/foo.gif")))
-	// assert.False(t, ruleSet.Allow(reqFromURL("https://ads.example.com:8000/")))
-	// assert.True(t, ruleSet.Allow(reqFromURL("http://ads.example.com.ua/foo.gif")))
-	// assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/redirect/http://ads.example.com/")))
-
-	// // // Third rule
-	// assert.False(t, ruleSet.Allow(reqFromURL("http://example.com/")))
-	// assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/foo.gif")))
-	// assert.True(t, ruleSet.Allow(reqFromURL("http://example.info/redirect/http://example.com/")))
-
-	// // Now add some exceptions
-	// rules = []string{
-	// 	"/banner/*/img^",
-	// 	"||ads.example.com^",
-	// 	"|http://example.com/|",
-	// 	"@@/banner/*/img^",
-	// 	"@@||ads.example.com^",
-	// 	"@@|http://example.com/|",
-	// }
-	// ruleSet, err = NewRuleSetFromList(rules)
-	// assert.NoError(t, err)
-
-	// // First rule
-	// assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/banner/foo/img")))
-	// assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/banner/foo/bar/img?param")))
-	// assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/banner//img/foo")))
-	// assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/banner/foo/img:8000")))
-	// assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/banner/img")))
-	// assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/banner/foo/imgraph")))
-	// assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/banner/foo/img.gif")))
-
-	// // Second rule
-	// assert.True(t, ruleSet.Allow(reqFromURL("http://ads.example.com/foo.gif")))
-	// assert.True(t, ruleSet.Allow(reqFromURL("http://server1.ads.example.com/foo.gif")))
-	// assert.True(t, ruleSet.Allow(reqFromURL("https://ads.example.com:8000/")))
-	// assert.True(t, ruleSet.Allow(reqFromURL("http://ads.example.com.ua/foo.gif")))
-	// assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/redirect/http://ads.example.com/")))
+	assert.False(t, ruleSet.Allow(reqFromURL("http://server1.ads.example.com/foo.gif")))
+	assert.False(t, ruleSet.Allow(reqFromURL("https://ads.example.com:8000/")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://ads.example.com.ua/foo.gif")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/redirect/http://ads.example.com/")))
 
 	// // Third rule
-	// assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/")))
-	// assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/foo.gif")))
-	// assert.True(t, ruleSet.Allow(reqFromURL("http://example.info/redirect/http://example.com/")))
+	assert.False(t, ruleSet.Allow(reqFromURL("http://example.com/")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/foo.gif")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://example.info/redirect/http://example.com/")))
+
+	// Now add some exceptions
+	rules = []string{
+		"/banner/*/img^",
+		"||ads.example.com^",
+		"|http://example.com/|",
+		"@@/banner/*/img^",
+		"@@||ads.example.com^",
+		"@@|http://example.com/|",
+	}
+	ruleSet, err = NewRuleSetFromList(rules)
+	assert.NoError(t, err)
+
+	// First rule
+	assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/banner/foo/img")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/banner/foo/bar/img?param")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/banner//img/foo")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/banner/foo/img:8000")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/banner/img")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/banner/foo/imgraph")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/banner/foo/img.gif")))
+
+	// Second rule
+	assert.True(t, ruleSet.Allow(reqFromURL("http://ads.example.com/foo.gif")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://server1.ads.example.com/foo.gif")))
+	assert.True(t, ruleSet.Allow(reqFromURL("https://ads.example.com:8000/")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://ads.example.com.ua/foo.gif")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/redirect/http://ads.example.com/")))
+
+	// Third rule
+	assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://example.com/foo.gif")))
+	assert.True(t, ruleSet.Allow(reqFromURL("http://example.info/redirect/http://example.com/")))
 }
 
 func TestRuleWithScriptOption(t *testing.T) {
