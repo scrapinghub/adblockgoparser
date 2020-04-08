@@ -30,12 +30,7 @@ func (matcher *Matcher) add(rule *ruleAdBlock) {
 }
 
 func (pathMatcher *PathMatcher) addPath(runes []rune, rule *ruleAdBlock) {
-	if len(runes) == 0 {
-		pathMatcher.rules = append(pathMatcher.rules, rule)
-		return
-	}
-
-	if string(runes[0]) == "^" {
+	if len(runes) == 0 || string(runes[0]) == "^" {
 		pathMatcher.rules = append(pathMatcher.rules, rule)
 		return
 	}
@@ -113,8 +108,13 @@ func (pathMatcher *PathMatcher) findNext(runes []rune, req *Request) bool {
 
 func matchDomains(rule *ruleAdBlock, req *Request) bool {
 	allowedDomain := true
+	hostname := strings.ToLower(req.URL.Hostname())
+	if rule.ruleType == domainName {
+		if !strings.HasSuffix(hostname, rule.ruleText[2:len(rule.ruleText)-1]) {
+			allowedDomain = false
+		}
+	}
 	if len(rule.domains) > 0 {
-		hostname := strings.ToLower(req.URL.Hostname())
 		for domain, active := range rule.domains {
 			if !(strings.HasSuffix(hostname, domain) == active) {
 				allowedDomain = false

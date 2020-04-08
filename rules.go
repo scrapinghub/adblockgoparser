@@ -109,10 +109,6 @@ func ParseRule(ruleText string) (*ruleAdBlock, error) {
 
 	rule.ruleType = addressPart
 	if strings.HasPrefix(rule.ruleText, "||") && strings.HasSuffix(rule.ruleText, "^") {
-		domain := rule.ruleText
-		domain = strings.TrimPrefix(domain, "||")
-		domain = strings.TrimSuffix(domain, "^")
-		rule.domains[domain] = true
 		rule.ruleType = domainName
 	}
 
