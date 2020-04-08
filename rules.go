@@ -139,8 +139,16 @@ func (ruleSet *RuleSet) Allow(req *Request) bool {
 
 func NewRuleSetFromList(rulesStr []string) (*RuleSet, error) {
 	ruleSet := &RuleSet{
-		white: &Matcher{next: map[rune]*Matcher{}},
-		black: &Matcher{next: map[rune]*Matcher{}},
+		white: &Matcher{
+			addressPartMatcher: &PathMatcher{
+				next: map[rune]*PathMatcher{},
+			},
+		},
+		black: &Matcher{
+			addressPartMatcher: &PathMatcher{
+				next: map[rune]*PathMatcher{},
+			},
+		},
 	}
 	// Start parsing
 	for _, ruleStr := range rulesStr {

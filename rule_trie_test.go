@@ -7,7 +7,9 @@ import (
 
 func TestExample01(t *testing.T) {
 	m := &Matcher{
-		next: map[rune]*Matcher{},
+		addressPartMatcher: &PathMatcher{
+			next: map[rune]*PathMatcher{},
+		},
 	}
 	rule1, _ := ParseRule("/banner/*/img^")
 	rule2, _ := ParseRule("||ads.example.com^")
@@ -31,7 +33,9 @@ func TestExample02(t *testing.T) {
 	rule2, _ := ParseRule("/assets/$script")
 
 	m := &Matcher{
-		next: map[rune]*Matcher{},
+		addressPartMatcher: &PathMatcher{
+			next: map[rune]*PathMatcher{},
+		},
 	}
 	m.add(rule1)
 	m.add(rule2)
