@@ -2,74 +2,127 @@ package adblockgoparser
 
 import (
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"strings"
 )
 
-type Trie struct {
-	isRoot                        bool
-	isLeaf                        bool
-	part                          string
-	parent                        *Trie
-	children                      []*Trie
-	noDomainIncludeRules          []string
-	noDomainExcludeRules          []string
-	domainActivatedIncludeRules   []string
-	domainActivatedExcludeRules   []string
-	domainDeactivatedIncludeRules []string
-	domainDeactivatedExcludeRules []string
-	noDomainIncludeRegex          *regexp.Regexp
-	noDomainExcludeRegex          *regexp.Regexp
-	domainActivatedIncludeRegex   *regexp.Regexp
-	domainActivatedExcludeRegex   *regexp.Regexp
-	domainDeactivatedIncludeRegex *regexp.Regexp
-	domainDeactivatedExcludeRegex *regexp.Regexp
+type Matcher struct {
+	next  map[rune]*Matcher
+	rules []*ruleAdBlock
 }
 
-func (trie *Trie) String() string {
-	if trie.parent != nil && !trie.parent.isRoot {
-		return fmt.Sprintf("%s.%s", trie.part, trie.parent)
+func (pathMatcher *Matcher) add(rule *ruleAdBlock) {
+	var runes []rune
+	switch rule.ruleType {
+	case addressPart:
+		runes = []rune(rule.ruleText)
+	case domainName:
+		runes = []rune(rule.ruleText[2 : len(rule.ruleText)-1])
+	case exactAddress:
+		runes = []rune(rule.ruleText[1 : len(rule.ruleText)-1])
 	}
-	if trie.part == "" {
-		return fmt.Sprintf("Root")
-	}
-	return fmt.Sprintf("%s", trie.part)
+	pathMatcher.addPath(runes, rule)
 }
 
-func (root *Trie) Match(req Request) bool {
-	node := root
-	specificBlock := false
-	generalBlock := false
-	exists := false
-	matched := false
-	dInclude := false
-	dExclude := false
-	domain := req.URL.Hostname()
-	parts := strings.Split(domain, ".")
-	for i := len(parts) - 1; i >= 0; i-- {
-		node, exists = node.hasChild(parts[i])
-		if !exists {
-			break
-		}
-		if node.isLeaf {
-			aInclude := node.domainActivatedIncludeRegex != nil && node.domainActivatedIncludeRegex.MatchString(req.URL.String())
-			aExclude := node.domainActivatedExcludeRegex != nil && !node.domainActivatedExcludeRegex.MatchString(req.URL.String())
-			dInclude = node.domainDeactivatedIncludeRegex != nil && node.domainDeactivatedIncludeRegex.MatchString(req.URL.String())
-			dExclude = node.domainDeactivatedExcludeRegex != nil && !node.domainDeactivatedExcludeRegex.MatchString(req.URL.String())
-			matched = aInclude || aExclude || dInclude || dExclude
-			specificBlock = aInclude || aExclude
+func (pathMatcher *Matcher) addPath(runes []rune, rule *ruleAdBlock) {
+	if len(runes) == 0 {
+
+		pathMatcher.rules = append(pathMatcher.rules, rule)
+		return
+	}
+	if string(runes[0]) == "^" {
+
+		pathMatcher.rules = append(pathMatcher.rules, rule)
+		return
+	}
+	if _, ok := pathMatcher.next[runes[0]]; !ok {
+
+		pathMatcher.next[runes[0]] = &Matcher{
+			next: map[rune]*Matcher{},
 		}
 	}
 
-	if matched {
-		return specificBlock
+	pathMatcher.next[runes[0]].addPath(runes[1:], rule)
+}
+
+func (pathMatcher *Matcher) Match(req *Request) bool {
+	path := req.URL.Path
+	pathRunes := []rune(path)
+	return pathMatcher.findNext(pathRunes, req)
+}
+
+func (pathMatcher *Matcher) findNext(runes []rune, req *Request) bool {
+	match := false
+	if len(pathMatcher.rules) != 0 {
+		path := strings.ToLower(req.URL.Path)
+		if strings.HasSuffix(path, ".gz") {
+			path = path[:len(path)-len(".gz")]
+		}
+		for _, rule := range pathMatcher.rules {
+			if len(rule.domains) > 0 {
+				// hostname := strings.ToLower(req.URL.Hostname())
+				// for domain, active := range rule.domains {
+				// 	// validate domain
+				// }
+			}
+
+			if rule.regex.MatchString(req.URL.String()) { // This line need to be removed and add simpler validation
+				match = true
+				for option, active := range rule.options {
+					switch {
+					case option == "xmlhttprequest":
+					case option == "third-party":
+					case option == "script":
+						switch filepath.Ext(path) {
+						case ".js":
+							match = match && active
+						}
+					case option == "image":
+						switch filepath.Ext(path) {
+						case ".jpg", ".jpeg", ".png", ".gif", ".webp", ".tiff", ".psd", ".raw", ".bmp", ".heif", ".indd", ".jpeg2000":
+							match = match && active
+						}
+					case option == "stylesheet":
+						switch filepath.Ext(path) {
+						case ".css":
+							match = match && active
+						}
+					case option == "font":
+						switch filepath.Ext(path) {
+						case ".otf", ".ttf", ".fnt":
+							match = match && active
+						}
+					}
+				}
+				if match {
+
+					return true
+				}
+			}
+		}
 	}
 
-	node = root
-	nInclude := node.noDomainIncludeRegex != nil && node.noDomainIncludeRegex.MatchString(req.URL.String())
-	nExclude := node.noDomainExcludeRegex != nil && !node.noDomainExcludeRegex.MatchString(req.URL.String())
-	generalBlock = nInclude || nExclude
-	return generalBlock
+	if len(runes) == 0 {
+
+		return false
+	}
+
+	if _, ok := pathMatcher.next[runes[0]]; ok {
+
+		match = pathMatcher.next[runes[0]].findNext(runes[1:], req)
+	}
+
+	if _, ok := pathMatcher.next['*']; ok && !match {
+		for i := range runes {
+
+			if pathMatcher.next['*'].findNext(runes[i:], req) {
+				return true
+			}
+		}
+		return false
+	}
+	return match
 }
 
 func combinedStringRegex(regexStringList []string) (*regexp.Regexp, error) {
@@ -90,124 +143,4 @@ func combinedStringRegex(regexStringList []string) (*regexp.Regexp, error) {
 		return nil, ErrCompilingRegex
 	}
 	return re, nil
-}
-
-func (trie *Trie) compileRegex() error {
-	if trie.isLeaf {
-		re, err := combinedStringRegex(trie.noDomainIncludeRules)
-		if err != nil {
-			return ErrCompilingRegex
-		}
-		trie.noDomainIncludeRegex = re
-
-		re, err = combinedStringRegex(trie.noDomainExcludeRules)
-		if err != nil {
-			return ErrCompilingRegex
-		}
-		trie.noDomainExcludeRegex = re
-
-		re, err = combinedStringRegex(trie.domainActivatedIncludeRules)
-		if err != nil {
-			return ErrCompilingRegex
-		}
-		trie.domainActivatedIncludeRegex = re
-
-		re, err = combinedStringRegex(trie.domainActivatedExcludeRules)
-		if err != nil {
-			return ErrCompilingRegex
-		}
-		trie.domainActivatedExcludeRegex = re
-
-		re, err = combinedStringRegex(trie.domainDeactivatedIncludeRules)
-		if err != nil {
-			return ErrCompilingRegex
-		}
-		trie.domainDeactivatedIncludeRegex = re
-
-		re, err = combinedStringRegex(trie.domainDeactivatedExcludeRules)
-		if err != nil {
-			return ErrCompilingRegex
-		}
-		trie.domainDeactivatedExcludeRegex = re
-	}
-	return nil
-}
-
-func (trie *Trie) compileAllLeafs() error {
-	err := trie.compileRegex()
-	if err != nil {
-		return ErrCompilingRegex
-	}
-
-	for _, child := range trie.children {
-		err = child.compileAllLeafs()
-		if err != nil {
-			return ErrCompilingRegex
-		}
-	}
-
-	return nil
-}
-
-func CreateRoot() *Trie {
-	trie := &Trie{
-		parent:   nil,
-		isRoot:   true,
-		isLeaf:   true,
-		children: []*Trie{},
-	}
-	return trie
-}
-
-func NewChild(parent *Trie, part string) *Trie {
-	trie := &Trie{
-		parent:   parent,
-		part:     part,
-		children: []*Trie{},
-	}
-	return trie
-}
-
-func (trie *Trie) hasChild(part string) (*Trie, bool) {
-	for _, child := range trie.children {
-		if child.part == part {
-			return child, true
-		}
-	}
-	return nil, false
-}
-
-func (parent *Trie) addChild(part string) *Trie {
-	child, exists := parent.hasChild(part)
-	if !exists {
-		child = NewChild(parent, part)
-		parent.children = append(parent.children, child)
-	}
-	return child
-}
-
-func (trie *Trie) include(regexString string, hasDomain bool, domainActivated bool) {
-	trie.isLeaf = true
-	if !hasDomain {
-		trie.noDomainIncludeRules = append(trie.noDomainIncludeRules, regexString)
-		return
-	}
-	if domainActivated {
-		trie.domainActivatedIncludeRules = append(trie.domainActivatedIncludeRules, regexString)
-		return
-	}
-	trie.domainDeactivatedIncludeRules = append(trie.domainDeactivatedIncludeRules, regexString)
-}
-
-func (trie *Trie) exclude(regexString string, hasDomain bool, domainActivated bool) {
-	trie.isLeaf = true
-	if !hasDomain {
-		trie.noDomainExcludeRules = append(trie.noDomainExcludeRules, regexString)
-		return
-	}
-	if domainActivated {
-		trie.domainActivatedExcludeRules = append(trie.domainActivatedExcludeRules, regexString)
-		return
-	}
-	trie.domainDeactivatedExcludeRules = append(trie.domainDeactivatedExcludeRules, regexString)
 }
