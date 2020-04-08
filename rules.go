@@ -139,9 +139,21 @@ func NewRuleSetFromList(rulesStr []string) (*RuleSet, error) {
 			addressPartMatcher: &PathMatcher{
 				next: map[rune]*PathMatcher{},
 			},
+			domainNameMatcher: &PathMatcher{
+				next: map[rune]*PathMatcher{},
+			},
+			exactAddressMatcher: &PathMatcher{
+				next: map[rune]*PathMatcher{},
+			},
 		},
 		black: &Matcher{
 			addressPartMatcher: &PathMatcher{
+				next: map[rune]*PathMatcher{},
+			},
+			domainNameMatcher: &PathMatcher{
+				next: map[rune]*PathMatcher{},
+			},
+			exactAddressMatcher: &PathMatcher{
 				next: map[rune]*PathMatcher{},
 			},
 		},

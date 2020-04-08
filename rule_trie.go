@@ -6,9 +6,9 @@ import (
 )
 
 type Matcher struct {
-	addressPartMatcher *PathMatcher
-	domainNameRules    []*ruleAdBlock
-	exactAddressRules  []*ruleAdBlock
+	addressPartMatcher  *PathMatcher
+	domainNameMatcher   *PathMatcher
+	exactAddressMatcher *PathMatcher
 }
 
 type PathMatcher struct {
@@ -23,9 +23,11 @@ func (matcher *Matcher) add(rule *ruleAdBlock) {
 		runes = []rune(rule.ruleText)
 		matcher.addressPartMatcher.addPath(runes, rule)
 	case domainName:
-		matcher.domainNameRules = append(matcher.domainNameRules, rule)
+		runes = []rune(rule.ruleText[2 : len(rule.ruleText)-1])
+		matcher.domainNameMatcher.addPath(runes, rule)
 	case exactAddress:
-		matcher.exactAddressRules = append(matcher.exactAddressRules, rule)
+		runes = []rune(rule.ruleText[1 : len(rule.ruleText)-1])
+		matcher.exactAddressMatcher.addPath(runes, rule)
 	}
 }
 
@@ -45,33 +47,25 @@ func (pathMatcher *PathMatcher) addPath(runes []rune, rule *ruleAdBlock) {
 }
 
 func (matcher *Matcher) Match(req *Request) bool {
-	path := req.URL.Path
-	pathRunes := []rune(path)
-
 	// Match path
+	pathRunes := []rune(req.URL.Path)
 	for i := range pathRunes {
-		match := matcher.addressPartMatcher.findNext(pathRunes[i:], req)
-		if match {
+		if matcher.addressPartMatcher.findNext(pathRunes[i:], req) {
 			return true
 		}
 	}
 
 	// Match domain and subdomains
-	for _, rule := range matcher.domainNameRules {
-		if matchDomains(rule, req) && matchOptions(rule, req) {
+	hnRunes := []rune(req.URL.Hostname())
+	for i := range hnRunes {
+		if matcher.domainNameMatcher.findNext(hnRunes[i:], req) {
 			return true
 		}
 	}
 
 	// Match exact address
-	uri := strings.ToLower(req.URL.String())
-	for _, rule := range matcher.exactAddressRules {
-		if uri == rule.ruleText[1:len(rule.ruleText)-1] {
-			return true
-		}
-	}
-
-	return false
+	uriRunes := []rune(req.URL.String())
+	return matcher.exactAddressMatcher.findNext(uriRunes, req)
 }
 
 func (pathMatcher *PathMatcher) findNext(runes []rune, req *Request) bool {
