@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -225,31 +224,4 @@ func ruleToRegexp(text string) string {
 	// we have "|$" in our regexp - do not touch it
 	rule = regexp.MustCompile(`(\|)[^$]`).ReplaceAllString(rule, `\|`)
 	return rule
-}
-
-func extractOptionsFromRequest(req *Request) map[string]bool {
-	result := make(map[string]bool, len(supportedOptions))
-	result["xmlhttprequest"] = req.IsXHR
-
-	path := strings.ToLower(req.URL.Path)
-	if strings.HasSuffix(path, ".gz") {
-		path = path[:len(path)-len(".gz")]
-	}
-
-	switch filepath.Ext(path) {
-	case ".js":
-		result["script"] = true
-	case ".jpg", ".jpeg", ".png", ".gif", ".webp", ".tiff", ".psd", ".raw", ".bmp", ".heif", ".indd", ".jpeg2000":
-		result["image"] = true
-	case ".css":
-		result["stylesheet"] = true
-	case ".otf", ".ttf", ".fnt":
-		result["font"] = true
-	}
-
-	refererUrl, err := url.ParseRequestURI(req.Origin)
-	if err == nil {
-		result["third-party"] = refererUrl.Hostname() != req.URL.Hostname()
-	}
-	return result
 }

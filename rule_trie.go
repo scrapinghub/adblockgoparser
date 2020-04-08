@@ -1,9 +1,7 @@
 package adblockgoparser
 
 import (
-	"fmt"
 	"path/filepath"
-	"regexp"
 	"strings"
 )
 
@@ -31,11 +29,13 @@ func (pathMatcher *Matcher) addPath(runes []rune, rule *ruleAdBlock) {
 		pathMatcher.rules = append(pathMatcher.rules, rule)
 		return
 	}
+
 	if string(runes[0]) == "^" {
 
 		pathMatcher.rules = append(pathMatcher.rules, rule)
 		return
 	}
+
 	if _, ok := pathMatcher.next[runes[0]]; !ok {
 
 		pathMatcher.next[runes[0]] = &Matcher{
@@ -96,7 +96,6 @@ func (pathMatcher *Matcher) findNext(runes []rune, req *Request) bool {
 					}
 				}
 				if match {
-
 					return true
 				}
 			}
@@ -104,43 +103,21 @@ func (pathMatcher *Matcher) findNext(runes []rune, req *Request) bool {
 	}
 
 	if len(runes) == 0 {
-
 		return false
 	}
 
 	if _, ok := pathMatcher.next[runes[0]]; ok {
-
 		match = pathMatcher.next[runes[0]].findNext(runes[1:], req)
 	}
 
 	if _, ok := pathMatcher.next['*']; ok && !match {
 		for i := range runes {
-
 			if pathMatcher.next['*'].findNext(runes[i:], req) {
 				return true
 			}
 		}
 		return false
 	}
+
 	return match
-}
-
-func combinedStringRegex(regexStringList []string) (*regexp.Regexp, error) {
-	var sb strings.Builder
-	for n, str := range regexStringList {
-		if n == 0 {
-			fmt.Fprintf(&sb, "%s", str)
-			continue
-		}
-		fmt.Fprintf(&sb, "|%s", str)
-	}
-	if sb.String() == "" {
-		return nil, nil
-	}
-
-	re, err := regexp.Compile(sb.String())
-	if err != nil {
-		return nil, ErrCompilingRegex
-	}
-	return re, nil
 }
