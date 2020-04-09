@@ -9,6 +9,7 @@ type Matcher struct {
 	addressPartMatcher  *PathMatcher
 	domainNameMatcher   *PathMatcher
 	exactAddressMatcher *PathMatcher
+	regexpRules         []*ruleAdBlock
 }
 
 type PathMatcher struct {
@@ -29,6 +30,8 @@ func (matcher *Matcher) add(rule *ruleAdBlock) {
 	case exactAddress:
 		runes = []rune(text[1 : len(text)-1])
 		matcher.exactAddressMatcher.addPath(runes, rule)
+	case regexRule:
+		matcher.regexpRules = append(matcher.regexpRules, rule)
 	}
 }
 
@@ -66,7 +69,18 @@ func (matcher *Matcher) Match(req *Request) bool {
 
 	// Match exact address
 	uriRunes := []rune(strings.ToLower(req.URL.String()))
-	return matcher.exactAddressMatcher.findNext(uriRunes, req)
+	if matcher.exactAddressMatcher.findNext(uriRunes, req) {
+		return true
+	}
+
+	// Match direct regexp
+	uri := req.URL.String()
+	for _, rule := range matcher.regexpRules {
+		if rule.regex.MatchString(uri) {
+			return true
+		}
+	}
+	return false
 }
 
 func (pathMatcher *PathMatcher) findNext(runes []rune, req *Request) bool {

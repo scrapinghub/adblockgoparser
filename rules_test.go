@@ -388,3 +388,18 @@ func TestRuleSetN10(t *testing.T) {
 	assert.True(t, ruleSet.Allow(reqFromURL("http://ads.other.com/banner/foo/file.css")))
 	assert.False(t, ruleSet.Allow(reqFromURL("http://ads.other.com/banner/foo/file.js")))
 }
+
+func TestRegex(t *testing.T) {
+	rules := []string{"/.*/"}
+
+	ruleSet, err := NewRuleSetFromList(rules)
+	assert.NoError(t, err)
+
+	assert.False(t, ruleSet.Allow(reqFromURL("http://example.com/")))
+	assert.False(t, ruleSet.Allow(reqFromURL("http://example.com/foo.gif")))
+	assert.False(t, ruleSet.Allow(reqFromURL("http://example.info/redirect/http://example.com/")))
+
+	assert.False(t, ruleSet.Allow(reqFromURL("HTTP://EXAMPLE.COM/")))
+	assert.False(t, ruleSet.Allow(reqFromURL("HTTP://EXAMPLE.COM/FOO.GIF")))
+	assert.False(t, ruleSet.Allow(reqFromURL("HTTP://EXAMPLE.INFO/REDIRECT/HTTP://EXAMPLE.COM/")))
+}

@@ -50,6 +50,7 @@ const (
 	addressPart = iota
 	domainName
 	exactAddress
+	regexRule
 )
 
 type ruleAdBlock struct {
@@ -115,6 +116,10 @@ func ParseRule(ruleText string) (*ruleAdBlock, error) {
 
 	if strings.HasPrefix(rule.ruleText, "|") && strings.HasSuffix(rule.ruleText, "|") {
 		rule.ruleType = exactAddress
+	}
+
+	if rule.ruleText == "" || (strings.HasPrefix(rule.ruleText, "/") && strings.HasSuffix(rule.ruleText, "/")) {
+		rule.ruleType = regexRule
 	}
 
 	re, err := regexp.Compile(ruleToRegexp(rule))
