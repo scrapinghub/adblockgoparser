@@ -62,12 +62,12 @@ func TestBadOptionRule(t *testing.T) {
 }
 
 func TestExceptionRule(t *testing.T) {
-	ruleText := "@@/hi/"
+	ruleText := "@@hi/"
 	rules := []string{ruleText}
 	ruleSet, err := NewRuleSetFromList(rules)
 	assert.NoError(t, err)
-	rule := ruleSet.white.addressPartMatcher.next['/'].next['h'].next['i'].next['/'].rules[0]
-	assert.Equal(t, "/hi/", rule.ruleText)
+	rule := ruleSet.white.addressPartMatcher.next['h'].next['i'].next['/'].rules[0]
+	assert.Equal(t, "hi/", rule.ruleText)
 }
 
 func reqFromURL(rawURL string) *Request {
@@ -402,4 +402,10 @@ func TestRegex(t *testing.T) {
 	assert.False(t, ruleSet.Allow(reqFromURL("HTTP://EXAMPLE.COM/")))
 	assert.False(t, ruleSet.Allow(reqFromURL("HTTP://EXAMPLE.COM/FOO.GIF")))
 	assert.False(t, ruleSet.Allow(reqFromURL("HTTP://EXAMPLE.INFO/REDIRECT/HTTP://EXAMPLE.COM/")))
+}
+
+func TestRegexLooksLikePath(t *testing.T) {
+	ruleText := "/hi/"
+	rule, _ := ParseRule(ruleText)
+	assert.Equal(t, rule.ruleType, regexRule)
 }
