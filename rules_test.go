@@ -9,19 +9,19 @@ import (
 
 func TestParsingCommentRule(t *testing.T) {
 	ruleText := "[Adblock Plus 2.0]"
-	_, err := ParseRule(ruleText)
+	_, err := parseRule(ruleText)
 	assert.EqualError(t, err, "Commented rules are skipped")
 }
 
 func TestParsingHTMLRule(t *testing.T) {
 	ruleText := "###AdSense1"
-	_, err := ParseRule(ruleText)
+	_, err := parseRule(ruleText)
 	assert.EqualError(t, err, "HTML rules are skipped")
 }
 
 func TestParsingBadOptionRule(t *testing.T) {
 	ruleText := "||domain.net^$badoption"
-	_, err := ParseRule(ruleText)
+	_, err := parseRule(ruleText)
 	assert.EqualError(t, err, "Unsupported option rules are skipped")
 }
 
@@ -406,6 +406,6 @@ func TestRegex(t *testing.T) {
 
 func TestRegexLooksLikePath(t *testing.T) {
 	ruleText := "/hi/"
-	rule, _ := ParseRule(ruleText)
+	rule, _ := parseRule(ruleText)
 	assert.Equal(t, rule.ruleType, regexRule)
 }

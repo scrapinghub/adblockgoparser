@@ -9,11 +9,17 @@ import (
 )
 
 var (
-	ErrSkipComment     = errors.New("Commented rules are skipped")
-	ErrSkipHTML        = errors.New("HTML rules are skipped")
-	ErrEmptyLine       = errors.New("Empty lines are skipped")
+	// ErrSkipComment Commented rules are skipped
+	ErrSkipComment = errors.New("Commented rules are skipped")
+	// ErrSkipHTML HTML rules are skipped
+	ErrSkipHTML = errors.New("HTML rules are skipped")
+	// ErrEmptyLine Empty lines are skipped
+	ErrEmptyLine = errors.New("Empty lines are skipped")
+	// ErrUnsupportedRule Unsupported option rules are skipped
 	ErrUnsupportedRule = errors.New("Unsupported option rules are skipped")
-	ErrCompilingRegex  = errors.New("Error compiling regexp")
+	// ErrCompilingRegex Error compiling regexp
+	ErrCompilingRegex = errors.New("Error compiling regexp")
+
 	// Except domain
 	supportedOptions = []string{
 		"image",
@@ -33,8 +39,7 @@ var (
 	}()
 )
 
-// Structs
-
+// Request has the expected data to be able to match the rules
 type Request struct {
 	// parsed full URL of the request
 	URL *url.URL
@@ -62,7 +67,7 @@ type ruleAdBlock struct {
 	ruleType    int
 }
 
-func ParseRule(ruleText string) (*ruleAdBlock, error) {
+func parseRule(ruleText string) (*ruleAdBlock, error) {
 	rule := &ruleAdBlock{
 		ruleText: strings.TrimSpace(ruleText),
 		domains:  map[string]bool{},
@@ -118,6 +123,8 @@ func ParseRule(ruleText string) (*ruleAdBlock, error) {
 		rule.ruleType = exactAddress
 	}
 
+	// The empty rule means the will block everything
+	// /{anything}/ mean regular expression. or define some other pattern to conflict to a path like /anything/
 	if rule.ruleText == "" || (strings.HasPrefix(rule.ruleText, "/") && strings.HasSuffix(rule.ruleText, "/")) {
 		rule.ruleType = regexRule
 	}
@@ -130,43 +137,46 @@ func ParseRule(ruleText string) (*ruleAdBlock, error) {
 	return rule, nil
 }
 
+// RuleSet handle the structure to match whitelist and blacklist
 type RuleSet struct {
-	white *Matcher
-	black *Matcher
+	white *matcher
+	black *matcher
 }
 
+// Allow return of the current request is allowed to proceed or should be avoided
 func (ruleSet *RuleSet) Allow(req *Request) bool {
 	return ruleSet.white.Match(req) || !ruleSet.black.Match(req)
 }
 
+// NewRuleSetFromList creates a RuleSet from a list of rules
 func NewRuleSetFromList(rulesStr []string) (*RuleSet, error) {
 	ruleSet := &RuleSet{
-		white: &Matcher{
-			addressPartMatcher: &PathMatcher{
-				next: map[rune]*PathMatcher{},
+		white: &matcher{
+			addressPartMatcher: &pathMatcher{
+				next: map[rune]*pathMatcher{},
 			},
-			domainNameMatcher: &PathMatcher{
-				next: map[rune]*PathMatcher{},
+			domainNameMatcher: &pathMatcher{
+				next: map[rune]*pathMatcher{},
 			},
-			exactAddressMatcher: &PathMatcher{
-				next: map[rune]*PathMatcher{},
+			exactAddressMatcher: &pathMatcher{
+				next: map[rune]*pathMatcher{},
 			},
 		},
-		black: &Matcher{
-			addressPartMatcher: &PathMatcher{
-				next: map[rune]*PathMatcher{},
+		black: &matcher{
+			addressPartMatcher: &pathMatcher{
+				next: map[rune]*pathMatcher{},
 			},
-			domainNameMatcher: &PathMatcher{
-				next: map[rune]*PathMatcher{},
+			domainNameMatcher: &pathMatcher{
+				next: map[rune]*pathMatcher{},
 			},
-			exactAddressMatcher: &PathMatcher{
-				next: map[rune]*PathMatcher{},
+			exactAddressMatcher: &pathMatcher{
+				next: map[rune]*pathMatcher{},
 			},
 		},
 	}
 	// Start parsing
 	for _, ruleStr := range rulesStr {
-		rule, err := ParseRule(ruleStr)
+		rule, err := parseRule(ruleStr)
 		switch {
 		case err == nil:
 			if !rule.isException {

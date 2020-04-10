@@ -5,56 +5,62 @@ import (
 	"strings"
 )
 
-type Matcher struct {
-	addressPartMatcher  *PathMatcher
-	domainNameMatcher   *PathMatcher
-	exactAddressMatcher *PathMatcher
+type matcher struct {
+	addressPartMatcher  *pathMatcher
+	domainNameMatcher   *pathMatcher
+	exactAddressMatcher *pathMatcher
 	regexpRules         []*ruleAdBlock
 }
 
-type PathMatcher struct {
-	next  map[rune]*PathMatcher
+type pathMatcher struct {
+	next  map[rune]*pathMatcher
 	rules []*ruleAdBlock
 }
 
-func (matcher *Matcher) add(rule *ruleAdBlock) {
+// Add Rule in a structured way to be able to match with Request
+func (m *matcher) Add(rule *ruleAdBlock) {
 	var runes []rune
 	text := strings.ToLower(rule.ruleText)
 	switch rule.ruleType {
 	case addressPart:
 		runes = []rune(text)
-		matcher.addressPartMatcher.addPath(runes, rule)
+		m.addressPartMatcher.addPath(runes, rule)
 	case domainName:
 		runes = []rune(text[2 : len(text)-1])
-		matcher.domainNameMatcher.addPath(runes, rule)
+		m.domainNameMatcher.addPath(runes, rule)
 	case exactAddress:
 		runes = []rune(text[1 : len(text)-1])
-		matcher.exactAddressMatcher.addPath(runes, rule)
+		m.exactAddressMatcher.addPath(runes, rule)
 	case regexRule:
-		matcher.regexpRules = append(matcher.regexpRules, rule)
+		m.regexpRules = append(m.regexpRules, rule)
 	}
 }
 
-func (pathMatcher *PathMatcher) addPath(runes []rune, rule *ruleAdBlock) {
+func (pm *pathMatcher) addPath(runes []rune, rule *ruleAdBlock) {
+	// Append rule when getting to the end or find the address end signal
 	if len(runes) == 0 || string(runes[0]) == "^" {
-		pathMatcher.rules = append(pathMatcher.rules, rule)
+		pm.rules = append(pm.rules, rule)
 		return
 	}
 
-	if _, ok := pathMatcher.next[runes[0]]; !ok {
-		pathMatcher.next[runes[0]] = &PathMatcher{
-			next: map[rune]*PathMatcher{},
+	// If the next rune doesn't exist
+	if _, ok := pm.next[runes[0]]; !ok {
+		// Create the next rune
+		pm.next[runes[0]] = &pathMatcher{
+			next: map[rune]*pathMatcher{},
 		}
 	}
 
-	pathMatcher.next[runes[0]].addPath(runes[1:], rule)
+	// Add the next rune, removing the current
+	pm.next[runes[0]].addPath(runes[1:], rule)
 }
 
-func (matcher *Matcher) Match(req *Request) bool {
+// Match the Request against all rules
+func (m *matcher) Match(req *Request) bool {
 	// Match path
 	pathRunes := []rune(strings.ToLower(req.URL.Path))
 	for i := range pathRunes {
-		if matcher.addressPartMatcher.findNext(pathRunes[i:], req) {
+		if m.addressPartMatcher.findNext(pathRunes[i:], req) {
 			return true
 		}
 	}
@@ -62,56 +68,61 @@ func (matcher *Matcher) Match(req *Request) bool {
 	// Match domain and subdomains
 	hnRunes := []rune(strings.ToLower(req.URL.Hostname()))
 	for i := range hnRunes {
-		if matcher.domainNameMatcher.findNext(hnRunes[i:], req) {
+		if m.domainNameMatcher.findNext(hnRunes[i:], req) {
 			return true
 		}
 	}
 
 	// Match exact address
-	uriRunes := []rune(strings.ToLower(req.URL.String()))
-	if matcher.exactAddressMatcher.findNext(uriRunes, req) {
+	URLRunes := []rune(strings.ToLower(req.URL.String()))
+	if m.exactAddressMatcher.findNext(URLRunes, req) {
 		return true
 	}
 
 	// Match direct regexp
-	uri := req.URL.String()
-	for _, rule := range matcher.regexpRules {
-		if rule.regex.MatchString(uri) {
+	URL := req.URL.String()
+	for _, rule := range m.regexpRules {
+		if rule.regex.MatchString(URL) {
 			return true
 		}
 	}
 	return false
 }
 
-func (pathMatcher *PathMatcher) findNext(runes []rune, req *Request) bool {
+func (pm *pathMatcher) findNext(runes []rune, req *Request) bool {
 	match := false
-	if len(pathMatcher.rules) != 0 {
-		for _, rule := range pathMatcher.rules {
+	// If find some rules in the current rune, try to match
+	if len(pm.rules) != 0 {
+		for _, rule := range pm.rules {
 			if matchDomains(rule, req) && matchOptions(rule, req) && rule.regex.MatchString(req.URL.String()) { // This line need to be removed and add simpler validation
 				return true
 			}
 		}
 	}
-	if len(runes) == 0 {
-		return false
-	}
 
-	if _, ok := pathMatcher.next[runes[0]]; ok {
-		match = pathMatcher.next[runes[0]].findNext(runes[1:], req)
-		if match {
-			return true
-		}
-	}
-
-	if _, ok := pathMatcher.next['*']; ok && !match {
-		for i := range runes {
-			match := pathMatcher.next['*'].findNext(runes[i:], req)
+	// If still have runes to looking for
+	if len(runes) != 0 {
+		// Go to the next expected rune
+		if _, ok := pm.next[runes[0]]; ok {
+			match = pm.next[runes[0]].findNext(runes[1:], req)
 			if match {
 				return true
 			}
 		}
 	}
 
+	// If the current path match has a wildcard
+	if _, ok := pm.next['*']; ok && !match {
+		// Start ignoring characters from URL
+		for i := range runes {
+			match := pm.next['*'].findNext(runes[i:], req)
+			if match {
+				return true
+			}
+		}
+	}
+
+	// Return false if no rules match neither has a path to follow nor wildcard
 	return false
 }
 

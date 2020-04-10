@@ -1,9 +1,9 @@
 package adblockgoparser
 
 // func TestExample01(t *testing.T) {
-// 	m := &Matcher{
-// 		addressPartMatcher: &PathMatcher{
-// 			next: map[rune]*PathMatcher{},
+// 	m := &matcher{
+// 		addressPartMatcher: &pathMatcher{
+// 			next: map[rune]*pathMatcher{},
 // 		},
 // 	}
 // 	rule1, _ := ParseRule("/banner/*/img^")
@@ -27,9 +27,9 @@ package adblockgoparser
 // 	rule1, _ := ParseRule("/assets/scripts/^")
 // 	rule2, _ := ParseRule("/assets/$script")
 
-// 	m := &Matcher{
-// 		addressPartMatcher: &PathMatcher{
-// 			next: map[rune]*PathMatcher{},
+// 	m := &matcher{
+// 		addressPartMatcher: &pathMatcher{
+// 			next: map[rune]*pathMatcher{},
 // 		},
 // 	}
 // 	m.add(rule1)
