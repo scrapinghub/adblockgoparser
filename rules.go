@@ -180,10 +180,10 @@ func NewRuleSetFromList(rulesStr []string) (*RuleSet, error) {
 		switch {
 		case err == nil:
 			if !rule.isException {
-				ruleSet.black.add(rule)
+				ruleSet.black.Add(rule)
 			}
 			if rule.isException {
-				ruleSet.white.add(rule)
+				ruleSet.white.Add(rule)
 			}
 		case errors.Is(err, ErrSkipComment),
 			errors.Is(err, ErrSkipHTML),
