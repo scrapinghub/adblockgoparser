@@ -17,8 +17,6 @@ var (
 	ErrEmptyLine = errors.New("Empty lines are skipped")
 	// ErrUnsupportedRule Unsupported option rules are skipped
 	ErrUnsupportedRule = errors.New("Unsupported option rules are skipped")
-	// ErrCompilingRegex Error compiling regexp
-	ErrCompilingRegex = errors.New("Error compiling regexp")
 
 	// Except domain
 	supportedOptions = []string{
@@ -51,39 +49,46 @@ type Request struct {
 	IsXHR bool
 }
 
+// RuleType type to identify the type of rule after parsing it
+type RuleType int
+
 const (
-	addressPart = iota
+	addressPart RuleType = iota
 	domainName
 	exactAddress
 	regexRule
 )
 
-type ruleAdBlock struct {
+// RuleAdBlock object containing the rule string generated regex and parsed options
+type RuleAdBlock struct {
 	ruleText    string
 	regex       *regexp.Regexp
 	options     map[string]bool
 	isException bool
 	domains     map[string]bool
-	ruleType    int
+	ruleType    RuleType
 }
 
-func parseRule(ruleText string) (*ruleAdBlock, error) {
-	rule := &ruleAdBlock{
-		ruleText: strings.TrimSpace(ruleText),
-		domains:  map[string]bool{},
-		options:  map[string]bool{},
-	}
+// ParseRule parse and create a RuleAdBlock from the string
+func ParseRule(ruleText string) (*RuleAdBlock, error) {
+	ruleText = strings.TrimSpace(ruleText)
 
-	if rule.ruleText == "" {
+	if ruleText == "" {
 		return nil, ErrEmptyLine
 	}
 
-	if strings.HasPrefix(rule.ruleText, "!") || strings.HasPrefix(rule.ruleText, "[Adblock") {
+	if strings.HasPrefix(ruleText, "!") || strings.HasPrefix(ruleText, "[Adblock") {
 		return nil, ErrSkipComment
 	}
 
-	if strings.Contains(rule.ruleText, "##") || strings.Contains(rule.ruleText, "#@#") || strings.Contains(rule.ruleText, "#?#") {
+	if strings.Contains(ruleText, "##") || strings.Contains(ruleText, "#@#") || strings.Contains(ruleText, "#?#") {
 		return nil, ErrSkipHTML
+	}
+
+	rule := &RuleAdBlock{
+		ruleText: ruleText,
+		domains:  map[string]bool{},
+		options:  map[string]bool{},
 	}
 
 	rule.isException = strings.HasPrefix(rule.ruleText, "@@")
@@ -131,7 +136,7 @@ func parseRule(ruleText string) (*ruleAdBlock, error) {
 
 	re, err := regexp.Compile(ruleToRegexp(rule))
 	if err != nil {
-		return nil, ErrCompilingRegex
+		return nil, fmt.Errorf("Cannot compile regex: %w", err)
 	}
 	rule.regex = re
 	return rule, nil
@@ -176,7 +181,7 @@ func NewRuleSetFromList(rulesStr []string) (*RuleSet, error) {
 	}
 	// Start parsing
 	for _, ruleStr := range rulesStr {
-		rule, err := parseRule(ruleStr)
+		rule, err := ParseRule(ruleStr)
 		switch {
 		case err == nil:
 			if !rule.isException {
@@ -197,7 +202,7 @@ func NewRuleSetFromList(rulesStr []string) (*RuleSet, error) {
 	return ruleSet, nil
 }
 
-func ruleToRegexp(r *ruleAdBlock) string {
+func ruleToRegexp(r *RuleAdBlock) string {
 	text := r.ruleText
 	// Convert AdBlock rule to a regular expression.
 	if text == "" {

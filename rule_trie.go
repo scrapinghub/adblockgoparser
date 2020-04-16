@@ -9,16 +9,16 @@ type matcher struct {
 	addressPartMatcher  *pathMatcher
 	domainNameMatcher   *pathMatcher
 	exactAddressMatcher *pathMatcher
-	regexpRules         []*ruleAdBlock
+	regexpRules         []*RuleAdBlock
 }
 
 type pathMatcher struct {
 	next  map[rune]*pathMatcher
-	rules []*ruleAdBlock
+	rules []*RuleAdBlock
 }
 
 // Add Rule in a structured way to be able to match with Request
-func (m *matcher) Add(rule *ruleAdBlock) {
+func (m *matcher) Add(rule *RuleAdBlock) {
 	var runes []rune
 	text := strings.ToLower(rule.ruleText)
 	switch rule.ruleType {
@@ -36,7 +36,7 @@ func (m *matcher) Add(rule *ruleAdBlock) {
 	}
 }
 
-func (pm *pathMatcher) addPath(runes []rune, rule *ruleAdBlock) {
+func (pm *pathMatcher) addPath(runes []rune, rule *RuleAdBlock) {
 	// Append rule when getting to the end or find the address end signal
 	if len(runes) == 0 || string(runes[0]) == "^" {
 		pm.rules = append(pm.rules, rule)
@@ -126,7 +126,7 @@ func (pm *pathMatcher) findNext(runes []rune, req *Request) bool {
 	return false
 }
 
-func matchDomains(rule *ruleAdBlock, req *Request) bool {
+func matchDomains(rule *RuleAdBlock, req *Request) bool {
 	allowedDomain := true
 	matchCase := false
 	hostname := req.URL.Hostname()
@@ -152,7 +152,7 @@ func matchDomains(rule *ruleAdBlock, req *Request) bool {
 	return allowedDomain
 }
 
-func matchOptions(rule *ruleAdBlock, req *Request) bool {
+func matchOptions(rule *RuleAdBlock, req *Request) bool {
 	matchOption := true
 	path := strings.ToLower(req.URL.Path)
 	if strings.HasSuffix(path, ".gz") {
