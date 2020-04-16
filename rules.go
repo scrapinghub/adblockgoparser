@@ -148,14 +148,24 @@ type RuleSet struct {
 	black *matcher
 }
 
+// AddRule Adds rule in the correct matcher
+func (ruleSet *RuleSet) AddRule(rule *RuleAdBlock) {
+	if !rule.isException {
+		ruleSet.black.Add(rule)
+	}
+	if rule.isException {
+		ruleSet.white.Add(rule)
+	}
+}
+
 // Allow return of the current request is allowed to proceed or should be avoided
 func (ruleSet *RuleSet) Allow(req *Request) bool {
 	return ruleSet.white.Match(req) || !ruleSet.black.Match(req)
 }
 
-// NewRuleSetFromList creates a RuleSet from a list of rules
-func NewRuleSetFromList(rulesStr []string) (*RuleSet, error) {
-	ruleSet := &RuleSet{
+// CreateRuleSet Creates a fresh new empty RuleSet
+func CreateRuleSet() *RuleSet {
+	return &RuleSet{
 		white: &matcher{
 			addressPartMatcher: &pathMatcher{
 				next: map[rune]*pathMatcher{},
@@ -179,27 +189,6 @@ func NewRuleSetFromList(rulesStr []string) (*RuleSet, error) {
 			},
 		},
 	}
-	// Start parsing
-	for _, ruleStr := range rulesStr {
-		rule, err := ParseRule(ruleStr)
-		switch {
-		case err == nil:
-			if !rule.isException {
-				ruleSet.black.Add(rule)
-			}
-			if rule.isException {
-				ruleSet.white.Add(rule)
-			}
-		case errors.Is(err, ErrSkipComment),
-			errors.Is(err, ErrSkipHTML),
-			errors.Is(err, ErrUnsupportedRule),
-			errors.Is(err, ErrEmptyLine):
-			return nil, fmt.Errorf("%w: %s", err, ruleStr)
-		default:
-			return nil, fmt.Errorf("Cannot parse rule: %w", err)
-		}
-	}
-	return ruleSet, nil
 }
 
 func ruleToRegexp(r *RuleAdBlock) string {

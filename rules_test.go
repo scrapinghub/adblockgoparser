@@ -1,12 +1,52 @@
 package adblockgoparser
 
 import (
+	"errors"
+	"fmt"
 	"net/url"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
 
+// Helper functions for testing
+func reqFromURL(rawURL string) *Request {
+	reqURL, _ := url.ParseRequestURI(rawURL)
+	req := &Request{
+		URL:     reqURL,
+		Origin:  "",
+		Referer: "",
+		IsXHR:   false,
+	}
+	return req
+}
+
+func newRuleSetFromList(rulesStr []string) (*RuleSet, error) {
+	ruleSet := CreateRuleSet()
+	// Start parsing
+	for _, ruleStr := range rulesStr {
+		rule, err := ParseRule(ruleStr)
+		switch {
+		case err == nil:
+			if !rule.isException {
+				ruleSet.black.Add(rule)
+			}
+			if rule.isException {
+				ruleSet.white.Add(rule)
+			}
+		case errors.Is(err, ErrSkipComment),
+			errors.Is(err, ErrSkipHTML),
+			errors.Is(err, ErrUnsupportedRule),
+			errors.Is(err, ErrEmptyLine):
+			return nil, fmt.Errorf("%w: %s", err, ruleStr)
+		default:
+			return nil, fmt.Errorf("Cannot parse rule: %w", err)
+		}
+	}
+	return ruleSet, nil
+}
+
+// Unit tests
 func TestParsingCommentRule(t *testing.T) {
 	ruleText := "[Adblock Plus 2.0]"
 	_, err := ParseRule(ruleText)
@@ -28,63 +68,52 @@ func TestParsingBadOptionRule(t *testing.T) {
 func TestCommentRule(t *testing.T) {
 	ruleText := "[Adblock Plus 2.0]"
 	rules := []string{ruleText}
-	_, err := NewRuleSetFromList(rules)
+	_, err := newRuleSetFromList(rules)
 	assert.EqualError(t, err, "Commented rules are skipped: [Adblock Plus 2.0]")
 
 	ruleText = "! Title: EasyList"
 	rules = []string{ruleText}
-	_, err = NewRuleSetFromList(rules)
+	_, err = newRuleSetFromList(rules)
 	assert.EqualError(t, err, "Commented rules are skipped: ! Title: EasyList")
 }
 
 func TestHTMLRule(t *testing.T) {
 	ruleText := "###AdSense1"
 	rules := []string{ruleText}
-	_, err := NewRuleSetFromList(rules)
+	_, err := newRuleSetFromList(rules)
 	assert.EqualError(t, err, "HTML rules are skipped: ###AdSense1")
 
 	ruleText = "statejournal.com#@##WNAd41"
 	rules = []string{ruleText}
-	_, err = NewRuleSetFromList(rules)
+	_, err = newRuleSetFromList(rules)
 	assert.EqualError(t, err, "HTML rules are skipped: statejournal.com#@##WNAd41")
 
 	ruleText = "mobile.twitter.com#?#.tweet:-abp-has(.promo)"
 	rules = []string{ruleText}
-	_, err = NewRuleSetFromList(rules)
+	_, err = newRuleSetFromList(rules)
 	assert.EqualError(t, err, "HTML rules are skipped: mobile.twitter.com#?#.tweet:-abp-has(.promo)")
 }
 
 func TestBadOptionRule(t *testing.T) {
 	ruleText := "||domain.net^$badoption"
 	rules := []string{ruleText}
-	_, err := NewRuleSetFromList(rules)
+	_, err := newRuleSetFromList(rules)
 	assert.EqualError(t, err, "Unsupported option rules are skipped: ||domain.net^$badoption")
 }
 
 func TestExceptionRule(t *testing.T) {
 	ruleText := "@@hi/"
 	rules := []string{ruleText}
-	ruleSet, err := NewRuleSetFromList(rules)
+	ruleSet, err := newRuleSetFromList(rules)
 	assert.NoError(t, err)
 	rule := ruleSet.white.addressPartMatcher.next['h'].next['i'].next['/'].rules[0]
 	assert.Equal(t, "hi/", rule.ruleText)
 }
 
-func reqFromURL(rawURL string) *Request {
-	reqURL, _ := url.ParseRequestURI(rawURL)
-	req := &Request{
-		URL:     reqURL,
-		Origin:  "",
-		Referer: "",
-		IsXHR:   false,
-	}
-	return req
-}
-
 func TestMatchCasePath(t *testing.T) {
 	rules := []string{"/banner/*/img^$match-case"}
 
-	ruleSet, err := NewRuleSetFromList(rules)
+	ruleSet, err := newRuleSetFromList(rules)
 	assert.NoError(t, err)
 
 	assert.False(t, ruleSet.Allow(reqFromURL("http://example.com/banner/foo/img")))
@@ -107,7 +136,7 @@ func TestMatchCasePath(t *testing.T) {
 func TestMatchCaseDomain(t *testing.T) {
 	rules := []string{"||ads.example.com^$match-case"}
 
-	ruleSet, err := NewRuleSetFromList(rules)
+	ruleSet, err := newRuleSetFromList(rules)
 	assert.NoError(t, err)
 
 	assert.False(t, ruleSet.Allow(reqFromURL("http://ads.example.com/foo.gif")))
@@ -126,7 +155,7 @@ func TestMatchCaseDomain(t *testing.T) {
 func TestMatchCaseExact(t *testing.T) {
 	rules := []string{"|http://example.com/|$match-case"}
 
-	ruleSet, err := NewRuleSetFromList(rules)
+	ruleSet, err := newRuleSetFromList(rules)
 	assert.NoError(t, err)
 
 	assert.False(t, ruleSet.Allow(reqFromURL("http://example.com/")))
@@ -141,7 +170,7 @@ func TestMatchCaseExact(t *testing.T) {
 func TestNewRuleSetFromListWithWhitelist(t *testing.T) {
 	rules := []string{"/banner/*/img^", "||ads.example.com^", "|http://example.com/|"}
 
-	ruleSet, err := NewRuleSetFromList(rules)
+	ruleSet, err := newRuleSetFromList(rules)
 	assert.NoError(t, err)
 
 	// First rule
@@ -174,7 +203,7 @@ func TestNewRuleSetFromListWithWhitelist(t *testing.T) {
 		"@@||ads.example.com^",
 		"@@|http://example.com/|",
 	}
-	ruleSet, err = NewRuleSetFromList(rules)
+	ruleSet, err = newRuleSetFromList(rules)
 	assert.NoError(t, err)
 
 	// First rule
@@ -202,14 +231,14 @@ func TestNewRuleSetFromListWithWhitelist(t *testing.T) {
 func TestRuleWithScriptOption(t *testing.T) {
 	// Only block script
 	rules := []string{"||ads.example.com^$script"}
-	ruleSet, err := NewRuleSetFromList(rules)
+	ruleSet, err := newRuleSetFromList(rules)
 	assert.NoError(t, err)
 	assert.True(t, ruleSet.Allow(reqFromURL("http://ads.example.com/")))
 	assert.False(t, ruleSet.Allow(reqFromURL("http://ads.example.com/file.js")))
 
 	// Only allow script
 	rules = []string{"||ads.example.com^$~script"}
-	ruleSet, err = NewRuleSetFromList(rules)
+	ruleSet, err = newRuleSetFromList(rules)
 	assert.NoError(t, err)
 	assert.False(t, ruleSet.Allow(reqFromURL("http://ads.example.com/")))
 	assert.True(t, ruleSet.Allow(reqFromURL("http://ads.example.com/file.js")))
@@ -218,14 +247,14 @@ func TestRuleWithScriptOption(t *testing.T) {
 func TestRuleWithScriptOptionOnWhitelist(t *testing.T) {
 	// Block everything on ads.example.com domain, except if it is script
 	rules := []string{"||ads.example.com^", "@@||ads.example.com^$script"}
-	ruleSet, err := NewRuleSetFromList(rules)
+	ruleSet, err := newRuleSetFromList(rules)
 	assert.NoError(t, err)
 	assert.False(t, ruleSet.Allow(reqFromURL("http://ads.example.com/")))
 	assert.True(t, ruleSet.Allow(reqFromURL("http://ads.example.com/file.js")))
 
 	// Block everything on ads.example.com domain, except if it is not script
 	rules = []string{"||ads.example.com^", "@@||ads.example.com^$~script"}
-	ruleSet, err = NewRuleSetFromList(rules)
+	ruleSet, err = newRuleSetFromList(rules)
 	assert.NoError(t, err)
 	assert.True(t, ruleSet.Allow(reqFromURL("http://ads.example.com/")))
 	assert.False(t, ruleSet.Allow(reqFromURL("http://ads.example.com/file.js")))
@@ -233,7 +262,7 @@ func TestRuleWithScriptOptionOnWhitelist(t *testing.T) {
 
 func TestRuleWithDomainOption(t *testing.T) {
 	rules := []string{"/banner/*/img$domain=example.com|~bar.example.com"}
-	ruleSet, err := NewRuleSetFromList(rules)
+	ruleSet, err := newRuleSetFromList(rules)
 	assert.NoError(t, err)
 	// Block for `example.com` domain and its subdomain
 	assert.False(t, ruleSet.Allow(reqFromURL("http://example.com/banner/foo/img")))
@@ -247,7 +276,7 @@ func TestRuleWithDomainOption(t *testing.T) {
 
 func TestRuleWithDomainOptionAndMoreOptions(t *testing.T) {
 	rules := []string{"||example.com^$script,domain=example.com|~bar.example.com", "||nonrelated.com^$script"}
-	ruleSet, err := NewRuleSetFromList(rules)
+	ruleSet, err := newRuleSetFromList(rules)
 	assert.NoError(t, err)
 	// Block for `example.com` domain and its subdomain, since it is script
 	assert.False(t, ruleSet.Allow(reqFromURL("http://example.com/file.js")))
@@ -268,14 +297,14 @@ func TestRuleWithDomainOptionAndMoreOptions(t *testing.T) {
 
 func TestRuleSetWithStyleSheetOption(t *testing.T) {
 	rules := []string{"banner/foo/*$stylesheet"}
-	ruleSet, err := NewRuleSetFromList(rules)
+	ruleSet, err := newRuleSetFromList(rules)
 	assert.NoError(t, err)
 	assert.False(t, ruleSet.Allow(reqFromURL("http://ads.example.com/banner/foo/file.css")))
 }
 
 func TestRuleSetWithStyleSheetOptionAndDomainRule(t *testing.T) {
 	rules := []string{"||ads.example.com^$stylesheet"}
-	ruleSet, err := NewRuleSetFromList(rules)
+	ruleSet, err := newRuleSetFromList(rules)
 	assert.NoError(t, err)
 	assert.False(t, ruleSet.Allow(reqFromURL("http://ads.example.com/banner/foo/file.css")))
 	assert.True(t, ruleSet.Allow(reqFromURL("http://ads.example.com/banner/foo/file.js")))
@@ -283,7 +312,7 @@ func TestRuleSetWithStyleSheetOptionAndDomainRule(t *testing.T) {
 
 func TestRuleSetWithNegateStyleSheetOptionAndDomainRule(t *testing.T) {
 	rules := []string{"||ads.example.com^$~stylesheet"}
-	ruleSet, err := NewRuleSetFromList(rules)
+	ruleSet, err := newRuleSetFromList(rules)
 	assert.NoError(t, err)
 	assert.True(t, ruleSet.Allow(reqFromURL("http://ads.example.com/banner/foo/file.css")))
 	assert.False(t, ruleSet.Allow(reqFromURL("http://ads.example.com/banner/foo/file.js")))
@@ -291,7 +320,7 @@ func TestRuleSetWithNegateStyleSheetOptionAndDomainRule(t *testing.T) {
 
 func TestRuleSetWithNegateStyleSheetOption(t *testing.T) {
 	rules := []string{"banner/foo/*$~stylesheet"}
-	ruleSet, err := NewRuleSetFromList(rules)
+	ruleSet, err := newRuleSetFromList(rules)
 	assert.NoError(t, err)
 	assert.True(t, ruleSet.Allow(reqFromURL("http://ads.example.com/banner/foo/file.css")))
 	assert.False(t, ruleSet.Allow(reqFromURL("http://ads.example.com/banner/foo/file.js")))
@@ -299,7 +328,7 @@ func TestRuleSetWithNegateStyleSheetOption(t *testing.T) {
 
 func TestRuleSetN1(t *testing.T) {
 	rules := []string{"banner/foo/*$stylesheet,domain=example.com"}
-	ruleSet, err := NewRuleSetFromList(rules)
+	ruleSet, err := newRuleSetFromList(rules)
 	assert.NoError(t, err)
 	assert.False(t, ruleSet.Allow(reqFromURL("http://ads.example.com/banner/foo/file.css")))
 	assert.True(t, ruleSet.Allow(reqFromURL("http://ads.example.com/banner/foo/file.js")))
@@ -308,7 +337,7 @@ func TestRuleSetN1(t *testing.T) {
 }
 func TestRuleSetN2(t *testing.T) {
 	rules := []string{"banner/foo/*$~stylesheet,domain=example.com"}
-	ruleSet, err := NewRuleSetFromList(rules)
+	ruleSet, err := newRuleSetFromList(rules)
 	assert.NoError(t, err)
 	assert.True(t, ruleSet.Allow(reqFromURL("http://ads.example.com/banner/foo/file.css")))
 	assert.False(t, ruleSet.Allow(reqFromURL("http://ads.example.com/banner/foo/file.js")))
@@ -317,7 +346,7 @@ func TestRuleSetN2(t *testing.T) {
 }
 func TestRuleSetN3(t *testing.T) {
 	rules := []string{"banner/foo/*$stylesheet,domain=~example.com"}
-	ruleSet, err := NewRuleSetFromList(rules)
+	ruleSet, err := newRuleSetFromList(rules)
 	assert.NoError(t, err)
 	assert.True(t, ruleSet.Allow(reqFromURL("http://ads.example.com/banner/foo/file.css")))
 	assert.True(t, ruleSet.Allow(reqFromURL("http://ads.example.com/banner/foo/file.js")))
@@ -327,7 +356,7 @@ func TestRuleSetN3(t *testing.T) {
 
 func TestRuleSetN4(t *testing.T) {
 	rules := []string{"banner/foo/*$~stylesheet,domain=~example.com"}
-	ruleSet, err := NewRuleSetFromList(rules)
+	ruleSet, err := newRuleSetFromList(rules)
 	assert.NoError(t, err)
 	assert.True(t, ruleSet.Allow(reqFromURL("http://ads.example.com/banner/foo/file.css")))
 	assert.True(t, ruleSet.Allow(reqFromURL("http://ads.example.com/banner/foo/file.js")))
@@ -336,7 +365,7 @@ func TestRuleSetN4(t *testing.T) {
 }
 func TestRuleSetN5(t *testing.T) {
 	rules := []string{"banner/foo/*$~stylesheet,domain=example.com", "*$stylesheet"}
-	ruleSet, err := NewRuleSetFromList(rules)
+	ruleSet, err := newRuleSetFromList(rules)
 	assert.NoError(t, err)
 	assert.False(t, ruleSet.Allow(reqFromURL("http://ads.example.com/banner/foo/file.css")))
 	assert.False(t, ruleSet.Allow(reqFromURL("http://ads.example.com/banner/foo/file.js")))
@@ -345,7 +374,7 @@ func TestRuleSetN5(t *testing.T) {
 }
 func TestRuleSetN6(t *testing.T) {
 	rules := []string{"banner/foo/*$stylesheet,domain=example.com", "*$~stylesheet"}
-	ruleSet, err := NewRuleSetFromList(rules)
+	ruleSet, err := newRuleSetFromList(rules)
 	assert.NoError(t, err)
 	assert.False(t, ruleSet.Allow(reqFromURL("http://ads.example.com/banner/foo/file.css")))
 	assert.False(t, ruleSet.Allow(reqFromURL("http://ads.example.com/banner/foo/file.js")))
@@ -354,7 +383,7 @@ func TestRuleSetN6(t *testing.T) {
 }
 func TestRuleSetN7(t *testing.T) {
 	rules := []string{"*$domain=example.com"}
-	ruleSet, err := NewRuleSetFromList(rules)
+	ruleSet, err := newRuleSetFromList(rules)
 	assert.NoError(t, err)
 	assert.False(t, ruleSet.Allow(reqFromURL("http://ads.example.com/banner/foo/file.css")))
 	assert.False(t, ruleSet.Allow(reqFromURL("http://ads.example.com/banner/foo/file.js")))
@@ -363,7 +392,7 @@ func TestRuleSetN7(t *testing.T) {
 }
 func TestRuleSetN8(t *testing.T) {
 	rules := []string{"*$domain=~example.com"}
-	ruleSet, err := NewRuleSetFromList(rules)
+	ruleSet, err := newRuleSetFromList(rules)
 	assert.NoError(t, err)
 	assert.True(t, ruleSet.Allow(reqFromURL("http://ads.example.com/banner/foo/file.css")))
 	assert.True(t, ruleSet.Allow(reqFromURL("http://ads.example.com/banner/foo/file.js")))
@@ -372,7 +401,7 @@ func TestRuleSetN8(t *testing.T) {
 }
 func TestRuleSetN9(t *testing.T) {
 	rules := []string{"*$stylesheet"}
-	ruleSet, err := NewRuleSetFromList(rules)
+	ruleSet, err := newRuleSetFromList(rules)
 	assert.NoError(t, err)
 	assert.False(t, ruleSet.Allow(reqFromURL("http://ads.example.com/banner/foo/file.css")))
 	assert.True(t, ruleSet.Allow(reqFromURL("http://ads.example.com/banner/foo/file.js")))
@@ -381,7 +410,7 @@ func TestRuleSetN9(t *testing.T) {
 }
 func TestRuleSetN10(t *testing.T) {
 	rules := []string{"*$~stylesheet"}
-	ruleSet, err := NewRuleSetFromList(rules)
+	ruleSet, err := newRuleSetFromList(rules)
 	assert.NoError(t, err)
 	assert.True(t, ruleSet.Allow(reqFromURL("http://ads.example.com/banner/foo/file.css")))
 	assert.False(t, ruleSet.Allow(reqFromURL("http://ads.example.com/banner/foo/file.js")))
@@ -392,7 +421,7 @@ func TestRuleSetN10(t *testing.T) {
 func TestRegex(t *testing.T) {
 	rules := []string{"/.*/"}
 
-	ruleSet, err := NewRuleSetFromList(rules)
+	ruleSet, err := newRuleSetFromList(rules)
 	assert.NoError(t, err)
 
 	assert.False(t, ruleSet.Allow(reqFromURL("http://example.com/")))
