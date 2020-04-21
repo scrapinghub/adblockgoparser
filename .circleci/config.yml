@@ -3,9 +3,8 @@ version: 2
 jobs:
   build:
     docker:
-      - image: circleci/python:3
+      - image: circleci/golang:1.13
     steps:
       - checkout
-      - setup_remote_docker
-      - run: |
-          echo "CI enabled"
+      - run: go version
+      - run: go test -v
